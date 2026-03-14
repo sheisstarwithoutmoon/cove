@@ -3,11 +3,23 @@ import { createRequire } from "module";
 const require = createRequire(import.meta.url);
 
 let serviceAccount;
-try {
-  serviceAccount = require("./serviceAccountKey.json");
-} catch (e) {
-  console.error("❌ serviceAccountKey.json not found! Download from Firebase Console → Project Settings → Service Accounts → Generate new private key");
-  process.exit(1);
+
+if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+  // Use environment variable (Render production)
+  serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+} else {
+  // Use local JSON file (local development)
+  const { createRequire } = await import("module");
+  const require = createRequire(import.meta.url);
+
+  try {
+    serviceAccount = require("./serviceAccountKey.json");
+  } catch (e) {
+    console.error(
+      "❌ Firebase credentials not found! Add FIREBASE_SERVICE_ACCOUNT env variable or serviceAccountKey.json locally."
+    );
+    process.exit(1);
+  }
 }
 
 admin.initializeApp({
