@@ -1,9 +1,20 @@
+import { useEffect, useState } from "react";
 import { useTheme } from "./ThemeContext";
 import { IconArrowLeft, IconCheck, IconAlertTriangle, IconExternalLink } from "./Icons";
 
 export default function ReportView({ report, onBack }) {
   const { theme } = useTheme();
-  const s = getStyles(theme);
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 900);
+
+  useEffect(() => {
+    function handleResize() {
+      setIsMobile(window.innerWidth <= 900);
+    }
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  const s = getStyles(theme, isMobile);
 
   const confidenceColor = (c) => ({ high: theme.success, medium: theme.warning, low: theme.danger }[c] || theme.textTertiary);
   const confidenceBg = (c) => ({ high: theme.successBg, medium: theme.warningBg, low: theme.dangerBg }[c] || "transparent");
@@ -101,10 +112,17 @@ function Section({ label, children, theme }) {
   );
 }
 
-function getStyles(t) {
+function getStyles(t, isMobile) {
   return {
     wrap: { maxWidth: 780, margin: "0 auto", paddingBottom: 60 },
-    topbar: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 28 },
+    topbar: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: isMobile ? "flex-start" : "center",
+      marginBottom: 28,
+      flexDirection: isMobile ? "column" : "row",
+      gap: isMobile ? 10 : 0,
+    },
     back: {
       background: t.bgElevated,
       border: `1px solid ${t.border}`,
@@ -119,7 +137,7 @@ function getStyles(t) {
       gap: 8,
       transition: "all 0.2s ease",
     },
-    statRow: { display: "flex", gap: 10 },
+    statRow: { display: "flex", gap: 10, flexWrap: "wrap" },
     statBadge: {
       display: "flex",
       alignItems: "center",
@@ -134,25 +152,25 @@ function getStyles(t) {
     },
     title: {
       color: t.textPrimary,
-      fontSize: 26,
+      fontSize: isMobile ? 21 : 26,
       fontWeight: 700,
-      marginBottom: 32,
+      marginBottom: isMobile ? 22 : 32,
       lineHeight: 1.35,
       letterSpacing: "-0.3px",
     },
     body: {
       color: t.textSecondary,
-      fontSize: 14.5,
+      fontSize: isMobile ? 14 : 14.5,
       lineHeight: 1.75,
       margin: 0,
     },
     finding: {
       display: "flex",
-      gap: 14,
+      gap: isMobile ? 10 : 14,
       background: t.bgCard,
       border: `1px solid ${t.border}`,
       borderRadius: 12,
-      padding: 16,
+      padding: isMobile ? 12 : 16,
       marginBottom: 12,
     },
     num: {
@@ -170,7 +188,7 @@ function getStyles(t) {
     },
     findingText: {
       color: t.textSecondary,
-      fontSize: 13.5,
+      fontSize: isMobile ? 13 : 13.5,
       lineHeight: 1.65,
       margin: "0 0 8px",
     },
@@ -184,10 +202,11 @@ function getStyles(t) {
     },
     srcRow: {
       display: "flex",
-      alignItems: "center",
+      alignItems: isMobile ? "flex-start" : "center",
       gap: 14,
       padding: "14px 0",
       borderBottom: `1px solid ${t.borderSubtle}`,
+      flexWrap: isMobile ? "wrap" : "nowrap",
     },
     statusDot: {
       width: 8,
@@ -197,7 +216,7 @@ function getStyles(t) {
     },
     srcTitle: {
       color: t.textSecondary,
-      fontSize: 13,
+      fontSize: isMobile ? 12.5 : 13,
       marginBottom: 3,
       fontWeight: 500,
     },
@@ -218,6 +237,7 @@ function getStyles(t) {
       textTransform: "uppercase",
       flexShrink: 0,
       letterSpacing: "0.5px",
+      marginLeft: isMobile ? 22 : 0,
     },
   };
 }

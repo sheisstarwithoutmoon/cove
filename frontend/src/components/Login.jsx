@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { signInWithPopup } from "firebase/auth";
 import { auth, googleProvider } from "../firebase";
 import { useTheme } from "./ThemeContext";
@@ -5,6 +6,15 @@ import { IconSearch, IconBrain, IconGlobe, IconFileText, IconShield, IconEdit, I
 
 export default function Login() {
   const { theme, isDark, toggleTheme } = useTheme();
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 900);
+
+  useEffect(() => {
+    function handleResize() {
+      setIsMobile(window.innerWidth <= 900);
+    }
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   const handleLogin = async () => {
     try {
@@ -14,7 +24,7 @@ export default function Login() {
     }
   };
 
-  const s = getStyles(theme, isDark);
+  const s = getStyles(theme, isDark, isMobile);
 
   return (
     <div style={s.page}>
@@ -67,7 +77,7 @@ export default function Login() {
   );
 }
 
-function getStyles(t, isDark) {
+function getStyles(t, isDark, isMobile) {
   return {
     page: {
       minHeight: "100vh",
@@ -94,8 +104,8 @@ function getStyles(t, isDark) {
     },
     themeToggle: {
       position: "absolute",
-      top: 20,
-      right: 20,
+      top: isMobile ? 12 : 20,
+      right: isMobile ? 12 : 20,
       background: t.bgElevated,
       border: `1px solid ${t.border}`,
       borderRadius: 10,
@@ -112,7 +122,7 @@ function getStyles(t, isDark) {
       backdropFilter: "blur(24px)",
       border: `1px solid ${t.border}`,
       borderRadius: 20,
-      padding: "48px 42px",
+      padding: isMobile ? "28px 18px" : "48px 42px",
       maxWidth: 440,
       width: "90%",
       textAlign: "center",
@@ -133,16 +143,16 @@ function getStyles(t, isDark) {
     },
     title: {
       color: t.textPrimary,
-      fontSize: 30,
+      fontSize: isMobile ? 26 : 30,
       fontWeight: 700,
       margin: "0 0 10px",
       letterSpacing: "-0.5px",
     },
     sub: {
       color: t.textTertiary,
-      fontSize: 14,
+      fontSize: isMobile ? 13 : 14,
       lineHeight: 1.65,
-      margin: "0 0 32px",
+      margin: "0 0 24px",
     },
     features: {
       marginBottom: 32,
@@ -150,7 +160,7 @@ function getStyles(t, isDark) {
     },
     feature: {
       color: t.textSecondary,
-      fontSize: 13,
+      fontSize: isMobile ? 12.5 : 13,
       padding: "10px 0",
       borderBottom: `1px solid ${t.borderSubtle}`,
       display: "flex",
@@ -172,13 +182,15 @@ function getStyles(t, isDark) {
       color: isDark ? "#1a1a2e" : "#fff",
       border: "none",
       borderRadius: 10,
-      padding: "12px 28px",
+      padding: isMobile ? "11px 18px" : "12px 28px",
       fontSize: 14,
       fontWeight: 600,
       cursor: "pointer",
       display: "inline-flex",
       alignItems: "center",
       transition: "all 0.2s ease",
+      justifyContent: "center",
+      width: isMobile ? "100%" : "auto",
     },
   };
 }

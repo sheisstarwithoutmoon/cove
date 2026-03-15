@@ -1,8 +1,18 @@
+import { useEffect, useState } from "react";
 import { useTheme } from "./ThemeContext";
 import { IconPaperclip, IconBrain, IconGlobe, IconFileText, IconShield, IconEdit, IconCheck, IconLoader } from "./Icons";
 
 export default function AgentProgress({ updates }) {
   const { theme, isDark } = useTheme();
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 900);
+
+  useEffect(() => {
+    function handleResize() {
+      setIsMobile(window.innerWidth <= 900);
+    }
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   const AGENTS = {
     pdf:          { Icon: IconPaperclip,  label: "PDF Context",       color: theme.agentPdf },
@@ -26,7 +36,7 @@ export default function AgentProgress({ updates }) {
     return u.length ? u[u.length - 1].message : "Waiting...";
   };
 
-  const s = getStyles(theme);
+  const s = getStyles(theme, isMobile);
 
   return (
     <div style={s.box}>
@@ -64,13 +74,13 @@ export default function AgentProgress({ updates }) {
   );
 }
 
-function getStyles(theme) {
+function getStyles(theme, isMobile) {
   return {
     box: {
       background: theme.bgCard,
       border: `1px solid ${theme.border}`,
       borderRadius: 14,
-      padding: "22px 24px",
+      padding: isMobile ? "14px 12px" : "22px 24px",
       marginBottom: 24,
     },
     heading: {
@@ -84,7 +94,7 @@ function getStyles(theme) {
     row: {
       display: "flex",
       alignItems: "center",
-      gap: 14,
+      gap: isMobile ? 10 : 14,
       padding: "8px 0",
       transition: "opacity 0.3s ease",
     },
@@ -106,8 +116,9 @@ function getStyles(theme) {
       transition: "color 0.3s ease",
     },
     msg: {
-      fontSize: 13,
+      fontSize: isMobile ? 12 : 13,
       color: theme.textMuted,
+      lineHeight: 1.4,
     },
     statusBadge: {
       width: 20,
