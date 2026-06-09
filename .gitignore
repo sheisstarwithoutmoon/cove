@@ -39,3 +39,8 @@ coverage/
 
 .cache/
 .parcel-cache/
+
+drizzle/meta/
+backend/drizzle/meta/
+
+
