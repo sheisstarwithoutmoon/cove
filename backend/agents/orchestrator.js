@@ -1,10 +1,19 @@
 import Groq from "groq-sdk";
 import dotenv from "dotenv";
-import { searchAgent } from "./searchAgent.js";
+import { dirname, resolve } from "path";
+import { fileURLToPath } from "url";
+import { unifiedSearch } from "../retrieval/unifiedSearch.js";
 import { summarizerAgent } from "./summarizerAgent.js";
-import { verifierAgent } from "./verifierAgent.js";
+import { verifierAgent } from "../verification/verifierAgent.js";
 import { reportAgent } from "./reportAgent.js";
-dotenv.config();
+import { safeJsonParse } from "../utils/safeJsonParse.js";
+
+// Load .env relative to this module so Groq has the API key when tests run from subfolders
+const __dirname = dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: resolve(__dirname, "../.env") });
+if (!process.env.GROQ_API_KEY) {
+  console.warn("[orchestrator] GROQ_API_KEY not found after loading .env (path:", resolve(__dirname, "../.env"), ")");
+}
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
@@ -19,15 +28,55 @@ async function planSubQuestions(query, pdfContext = "") {
       messages: [
         {
           role: "system",
-          content: `Break the user's query into 3-4 specific sub-questions for comprehensive research.
-Return ONLY a JSON array of strings. Example: ["What is X?", "How does X work?", "What are effects of X?"]`,
+          ccontent: `
+Break the user's query into at most four NON-OVERLAPPING research questions.
+
+Avoid asking the same thing twice.
+
+Try to cover:
+
+- concepts
+- mechanisms
+- comparisons
+- applications
+
+Each question should explore a different aspect.
+
+Return ONLY a JSON array of strings.
+
+Example:
+
+[
+"What is RLHF?",
+"How does RLHF work?",
+"How does RLHF compare with DPO?",
+"What are practical applications of RLHF?"
+]
+`,
         },
         { role: "user", content: `Query: ${query}${contextBlock}` },
       ],
       temperature: 0.3,
+      response_format: { type: "json_object" }
     });
-    let text = response.choices[0].message.content.trim().replace(/```json|```/g, "").trim();
-    return JSON.parse(text).slice(0, 4);
+    
+    const text = response.choices[0].message.content;
+    const parsed = safeJsonParse(text, [query]);
+    
+    if (Array.isArray(parsed)) {
+      return parsed.slice(0, 4);
+    }
+    
+    // Look for any array inside the parsed object if it returned an object wrapper
+    if (parsed && typeof parsed === "object") {
+      for (const val of Object.values(parsed)) {
+        if (Array.isArray(val)) {
+          return val.slice(0, 4);
+        }
+      }
+    }
+    
+    return [query];
   } catch {
     return [query];
   }
@@ -41,21 +90,21 @@ export async function runResearchPipeline(query, onUpdate, options = {}) {
   const subQuestions = await planSubQuestions(query, pdfContext);
   onUpdate({ type: "agent_done", agent: "orchestrator", message: `Created ${subQuestions.length} research tasks`, data: subQuestions });
 
-  // Step 2: Search
-  onUpdate({ type: "agent_start", agent: "search", message: "Searching the web for relevant sources..." });
-  const allResults = [];
-  for (const q of subQuestions) {
-    const results = await searchAgent(q);
-    allResults.push(...results);
-  }
+  // Step 2: Search (Parallel execution of all subquestions)
+  onUpdate({ type: "agent_start", agent: "search", message: "Coordinating multi-source retrieval..." });
+  
+  const searchPromises = subQuestions.map((q) => unifiedSearch(q, onUpdate));
+  const resultsArrays = await Promise.all(searchPromises);
+  const allResults = resultsArrays.flat();
+
   // Deduplicate by URL
   const seen = new Set();
   const uniqueResults = allResults.filter((r) => {
-    if (seen.has(r.url)) return false;
+    if (!r.url || seen.has(r.url)) return false;
     seen.add(r.url);
     return true;
   });
-  onUpdate({ type: "agent_done", agent: "search", message: `Found ${uniqueResults.length} unique sources`, data: uniqueResults.map((r) => r.url) });
+  onUpdate({ type: "agent_done", agent: "search", message: `Found ${uniqueResults.length} unique sources across academic & web`, data: uniqueResults.map((r) => r.url) });
 
   // Step 3: Summarize
   onUpdate({ type: "agent_start", agent: "summarizer", message: "Reading and summarizing each source..." });
