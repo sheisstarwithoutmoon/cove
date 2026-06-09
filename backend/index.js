@@ -6,7 +6,9 @@ import pdfParse from "pdf-parse";
 import axios from "axios";
 import { authMiddleware } from "./middleware/auth.js";
 import { runResearchPipeline } from "./agents/orchestrator.js";
-import { saveReport, getReports, getUserProfile, saveUserProfile } from "./firebase.js";
+import {getUserProfile, saveUserProfile } from "./firebase.js";
+import { saveReport } from "./db/saveReport.js";
+import { getReports } from "./db/getReports.js";
 
 dotenv.config();
 
