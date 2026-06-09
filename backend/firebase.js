@@ -36,44 +36,6 @@ export async function verifyToken(token) {
   }
 }
 
-export async function saveReport(uid, query, report) {
-  try {
-    const ref = db.collection("users").doc(uid).collection("reports").doc();
-    await ref.set({ uid, query, report, created_at: new Date().toISOString() });
-    return ref.id;
-  } catch (e) {
-    console.error("Save report error:", e.message);
-    return null;
-  }
-}
-
-export async function getReports(uid) {
-  try {
-    const userSnapshot = await db
-      .collection("users")
-      .doc(uid)
-      .collection("reports")
-      .orderBy("created_at", "desc")
-      .limit(20)
-      .get();
-
-    const userReports = userSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-    if (userReports.length > 0) return userReports;
-
-    const legacySnapshot = await db
-      .collection("reports")
-      .where("uid", "==", uid)
-      .orderBy("created_at", "desc")
-      .limit(20)
-      .get();
-
-    return legacySnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-  } catch (e) {
-    console.error("Get reports error:", e.message);
-    return [];
-  }
-}
-
 export async function getUserProfile(uid) {
   try {
     const doc = await db.collection("users").doc(uid).get();
