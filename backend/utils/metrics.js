@@ -15,7 +15,7 @@ export const globalMetrics = {
 
   claim_count: 0,
   supported_claim_count: 0,
-
+  semantic_scholar_hits: 0,
   citation_coverage: 0,
 
   tokens_in: 0,

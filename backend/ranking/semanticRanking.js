@@ -174,6 +174,7 @@ export async function computeAcademicRanking(results, query = "") {
     }
     let authority_score = getAuthorityScore(item.venue);
     
+    
     const final_score = 0.45 * semantic_score + 0.20 * citation_score + 0.15 * recency_score + 0.20 * authority_score;
 
     item.ranking_metrics = {

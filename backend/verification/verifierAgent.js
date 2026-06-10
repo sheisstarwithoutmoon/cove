@@ -76,7 +76,9 @@ Return ONLY JSON:
 }
 
 export async function verifierAgent(summaries) {
-  const sourcePromises = summaries.map(async (source) => {
+  const sourcePromises = summaries
+  .filter(source => source && source.url)
+  .map(async (source) => {
     const urlAlive = await checkUrlAlive(source.url);
 
     const claimPromises = (source.claims || []).map(async (claim) => {
