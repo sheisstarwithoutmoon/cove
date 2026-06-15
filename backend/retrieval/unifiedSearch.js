@@ -17,8 +17,17 @@ async function searchOpenAlex(query) {
   return openalexAgent(query);
 }
 
-export async function unifiedSearch(query, onUpdate) {
+export async function unifiedSearch(queryOrMessage, onUpdate) {
   const startTime = Date.now();
+  let query;
+  let isEnvelope = false;
+
+  if (queryOrMessage && queryOrMessage.payload && typeof queryOrMessage.payload === "object") {
+    query = queryOrMessage.payload.subQuery || queryOrMessage.payload.query;
+    isEnvelope = true;
+  } else {
+    query = queryOrMessage;
+  }
 
   // 1. Cache Lookup
   const cachedResults = retrievalCache.get(query);
@@ -162,6 +171,21 @@ export async function unifiedSearch(query, onUpdate) {
 
   // 7. Store in Cache
   retrievalCache.set(query, results);
+
+  if (isEnvelope) {
+    return {
+      from: "search_agent",
+      to: "orchestrator_agent",
+      type: "SEARCH_RESULTS",
+      payload: {
+        results: results
+      },
+      metadata: {
+        timestamp: new Date().toISOString(),
+        latency_ms: Date.now() - startTime
+      }
+    };
+  }
 
   return results;
 }

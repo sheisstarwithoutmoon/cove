@@ -1,21 +1,9 @@
-import { GoogleGenAI } from "@google/genai";
-import dotenv from "dotenv";
-import { dirname, resolve } from "path";
-import { fileURLToPath } from "url";
+import { ai } from "../utils/gemini.js";
 import { unifiedSearch } from "../retrieval/unifiedSearch.js";
 import { summarizerAgent } from "./summarizerAgent.js";
 import { verifierAgent } from "../verification/verifierAgent.js";
 import { reportAgent } from "./reportAgent.js";
 import { safeJsonParse } from "../utils/safeJsonParse.js";
-
-// Load .env relative to this module so Gemini has the API key when tests run from subfolders
-const __dirname = dirname(fileURLToPath(import.meta.url));
-dotenv.config({ path: resolve(__dirname, "../.env") });
-if (!process.env.GEMINI_API_KEY) {
-  console.warn("[orchestrator] GEMINI_API_KEY not found after loading .env (path:", resolve(__dirname, "../.env"), ")");
-}
-
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 /**
  * Tracks the agent's research actions, search results, summarizations, and verifications.
@@ -29,10 +17,18 @@ export class AgentMemory {
     this.summaries = [];         // claims: { url, title, claims, snippet, ... }
     this.verifiedSources = [];   // verified results: { url, title, urlAlive, claims, confidence, ... }
     this.searchHistory = [];     // record of queries searched
+    this.messageLog = [];        // tracks structured inter-agent messages for logging/auditing
   }
 
   addStep(thought, action, params, observation) {
     this.steps.push({ thought, action, params, observation });
+  }
+
+  logMessage(message) {
+    this.messageLog.push({
+      ...message,
+      loggedAt: new Date().toISOString()
+    });
   }
 
   getScratchpad() {
@@ -82,51 +78,7 @@ const reactDecisionSchema = {
   required: ["thought", "action"]
 };
 
-// Keep legacy planSubQuestions export to maintain full compatibility if other files import it
-export async function planSubQuestions(query, pdfContext = "") {
-  try {
-    const contextBlock = pdfContext
-      ? `\n\nAdditional context from user PDF:\n${pdfContext.slice(0, 2500)}`
-      : "";
-
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: `Query: ${query}${contextBlock}`,
-      config: {
-        systemInstruction: `Break the user's query into at most four NON-OVERLAPPING research questions.
-Avoid asking the same thing twice.
-Each question should explore a different aspect.`,
-        temperature: 0.3,
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: "ARRAY",
-          items: {
-            type: "STRING"
-          }
-        }
-      }
-    });
-    
-    const text = response.text;
-    const parsed = safeJsonParse(text, [query]);
-    
-    if (Array.isArray(parsed)) {
-      return parsed.slice(0, 4);
-    }
-    
-    if (parsed && typeof parsed === "object") {
-      for (const val of Object.values(parsed)) {
-        if (Array.isArray(val)) {
-          return val.slice(0, 4);
-        }
-      }
-    }
-    
-    return [query];
-  } catch {
-    return [query];
-  }
-}
+// planSubQuestions removed as dead code. The orchestrator plans query paths dynamically inside the ReAct loop.
 
 /**
  * Runs the dynamic ReAct research pipeline.
@@ -137,7 +89,7 @@ export async function runResearchPipeline(query, onUpdate, options = {}) {
   // Initialize Memory
   const memory = new AgentMemory(query, pdfContext);
 
-  // Define Tool Registry
+  // Define Tool Registry using Agent Communication Protocol (Structured Message Envelopes)
   const tools = {
     search_query: async (params) => {
       const { subQuery } = params;
@@ -145,15 +97,29 @@ export async function runResearchPipeline(query, onUpdate, options = {}) {
         return "Error: subQuery parameter is required for search_query tool.";
       }
       
+      const startTime = Date.now();
       memory.searchHistory.push(subQuery);
       
+      // Outgoing Search Request Envelope
+      const searchRequestMsg = {
+        from: "orchestrator_agent",
+        to: "search_agent",
+        type: "SEARCH_REQUEST",
+        payload: { subQuery },
+        metadata: { timestamp: new Date().toISOString() }
+      };
+      memory.logMessage(searchRequestMsg);
+
       onUpdate({
         type: "agent_start",
         agent: "search",
         message: `Coordinating retrieval for: "${subQuery}"...`
       });
       
-      const results = await unifiedSearch(subQuery, onUpdate);
+      const responseEnvelope = await unifiedSearch(searchRequestMsg, onUpdate);
+      memory.logMessage(responseEnvelope);
+
+      const results = responseEnvelope.payload?.results || [];
       
       // Deduplicate by URL and store raw results
       let newCount = 0;
@@ -163,7 +129,7 @@ export async function runResearchPipeline(query, onUpdate, options = {}) {
           newCount++;
         }
       });
-      
+
       onUpdate({
         type: "agent_done",
         agent: "search",
@@ -183,13 +149,30 @@ export async function runResearchPipeline(query, onUpdate, options = {}) {
         return "No new unsummarized sources in memory. Run search_query with a new query first.";
       }
       
+      // Outgoing Summarization Request Envelope
+      const summarizeRequestMsg = {
+        from: "orchestrator_agent",
+        to: "summarizer_agent",
+        type: "SUMMARIZATION_REQUEST",
+        payload: {
+          query,
+          searchResults: unsummarized,
+          pdfContext
+        },
+        metadata: { timestamp: new Date().toISOString() }
+      };
+      memory.logMessage(summarizeRequestMsg);
+
       onUpdate({
         type: "agent_start",
         agent: "summarizer",
         message: `Reading and extracting claims from ${unsummarized.length} sources...`
       });
       
-      const newSummaries = await summarizerAgent(query, unsummarized, pdfContext);
+      const responseEnvelope = await summarizerAgent(summarizeRequestMsg);
+      memory.logMessage(responseEnvelope);
+
+      const newSummaries = responseEnvelope.payload?.summaries || [];
       
       // Add to summaries memory
       memory.summaries.push(...newSummaries);
@@ -216,13 +199,28 @@ export async function runResearchPipeline(query, onUpdate, options = {}) {
         return "All claims in memory have already been verified.";
       }
       
+      // Outgoing Verification Request Envelope
+      const verifyRequestMsg = {
+        from: "orchestrator_agent",
+        to: "verifier_agent",
+        type: "VERIFICATION_REQUEST",
+        payload: {
+          summaries: unverified
+        },
+        metadata: { timestamp: new Date().toISOString() }
+      };
+      memory.logMessage(verifyRequestMsg);
+
       onUpdate({
         type: "agent_start",
         agent: "verifier",
         message: `Verifying claims for ${unverified.length} sources...`
       });
       
-      const verified = await verifierAgent(unverified);
+      const responseEnvelope = await verifierAgent(verifyRequestMsg);
+      memory.logMessage(responseEnvelope);
+
+      const verified = responseEnvelope.payload?.verifiedSources || [];
       
       // Add to verified memory
       memory.verifiedSources.push(...verified);
@@ -340,9 +338,29 @@ Decide your next action:`;
     }
   }
 
-  // Compile report
+  // Compile report using Agent Communication Protocol (Message Envelope)
   onUpdate({ type: "agent_start", agent: "reporter", message: "Compiling final report..." });
-  const report = await reportAgent(query, memory.verifiedSources, pdfContext, pdfMeta);
+  
+  // Outgoing Report Request Envelope
+  const reportRequestMsg = {
+    from: "orchestrator_agent",
+    to: "report_agent",
+    type: "REPORT_REQUEST",
+    payload: {
+      query,
+      verifiedSources: memory.verifiedSources,
+      pdfContext,
+      pdfMeta
+    },
+    metadata: { timestamp: new Date().toISOString() }
+  };
+  memory.logMessage(reportRequestMsg);
+
+  const reportResponseEnvelope = await reportAgent(reportRequestMsg);
+  memory.logMessage(reportResponseEnvelope);
+
+  const report = reportResponseEnvelope.payload?.report || reportResponseEnvelope; // fallback support
+
   onUpdate({ type: "agent_done", agent: "reporter", message: "Report ready!" });
 
   return report;

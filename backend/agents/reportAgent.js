@@ -1,12 +1,29 @@
-import { GoogleGenAI } from "@google/genai";
-import dotenv from "dotenv";
+import { ai } from "../utils/gemini.js";
 import { safeJsonParse } from "../utils/safeJsonParse.js";
 
-dotenv.config();
+export async function reportAgent(
+  queryOrMessage,
+  verifiedSourcesLegacy,
+  pdfContextLegacy = "",
+  pdfMetaLegacy = null
+) {
+  const startTime = Date.now();
+  let query, verifiedSources, pdfContext, pdfMeta;
+  let isEnvelope = false;
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  if (queryOrMessage && queryOrMessage.payload && typeof queryOrMessage.payload === "object") {
+    query = queryOrMessage.payload.query;
+    verifiedSources = queryOrMessage.payload.verifiedSources || [];
+    pdfContext = queryOrMessage.payload.pdfContext || "";
+    pdfMeta = queryOrMessage.payload.pdfMeta || null;
+    isEnvelope = true;
+  } else {
+    query = queryOrMessage;
+    verifiedSources = verifiedSourcesLegacy || [];
+    pdfContext = pdfContextLegacy;
+    pdfMeta = pdfMetaLegacy;
+  }
 
-export async function reportAgent(query, verifiedSources, pdfContext = "", pdfMeta = null) {
   const goodSources = verifiedSources.filter((s) => s.confidence !== "low");
   const flaggedSources = verifiedSources.filter((s) => s.confidence === "low");
 
@@ -100,6 +117,21 @@ export async function reportAgent(query, verifiedSources, pdfContext = "", pdfMe
     report.pdfContextUsed = Boolean(pdfContext);
     report.pdfMeta = pdfMeta || null;
 
+    if (isEnvelope) {
+      return {
+        from: "report_agent",
+        to: "orchestrator_agent",
+        type: "FINAL_REPORT",
+        payload: {
+          report: report
+        },
+        metadata: {
+          timestamp: new Date().toISOString(),
+          latency_ms: Date.now() - startTime
+        }
+      };
+    }
+
     return report;
   } catch (e) {
     console.error("Report agent error:", e.message);
@@ -124,6 +156,23 @@ export async function reportAgent(query, verifiedSources, pdfContext = "", pdfMe
     report.pdfContextUsed = Boolean(pdfContext);
     report.pdfMeta = pdfMeta || null;
     report.query = query;
+
+    if (isEnvelope) {
+      return {
+        from: "report_agent",
+        to: "orchestrator_agent",
+        type: "FINAL_REPORT",
+        payload: {
+          report: report
+        },
+        metadata: {
+          timestamp: new Date().toISOString(),
+          error: e.message,
+          latency_ms: Date.now() - startTime
+        }
+      };
+    }
+
     return report;
   }
 }

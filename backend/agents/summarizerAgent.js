@@ -1,18 +1,26 @@
-import { GoogleGenAI } from "@google/genai";
-import dotenv from "dotenv";
+import { ai } from "../utils/gemini.js";
 import { safeJsonParse } from "../utils/safeJsonParse.js";
 
-dotenv.config();
-
-const ai = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY
-});
-
 export async function summarizerAgent(
-  query,
-  searchResults,
-  pdfContext = ""
+  queryOrMessage,
+  searchResultsLegacy,
+  pdfContextLegacy = ""
 ) {
+  const startTime = Date.now();
+  let query, searchResults, pdfContext;
+  let isEnvelope = false;
+
+  if (queryOrMessage && queryOrMessage.payload && typeof queryOrMessage.payload === "object") {
+    query = queryOrMessage.payload.query;
+    searchResults = queryOrMessage.payload.searchResults || [];
+    pdfContext = queryOrMessage.payload.pdfContext || "";
+    isEnvelope = true;
+  } else {
+    query = queryOrMessage;
+    searchResults = searchResultsLegacy || [];
+    pdfContext = pdfContextLegacy;
+  }
+
   const contextBlock = pdfContext
     ? `\n\nAdditional context from user PDF (supplementary, not a citation):\n${pdfContext.slice(0, 2000)}`
     : "";
@@ -132,5 +140,22 @@ Return ONLY JSON:
   const batchResults =
     await Promise.all(batchPromises);
 
-  return batchResults.flat();
+  const results = batchResults.flat();
+
+  if (isEnvelope) {
+    return {
+      from: "summarizer_agent",
+      to: "orchestrator_agent",
+      type: "SUMMARIZATION_RESULTS",
+      payload: {
+        summaries: results
+      },
+      metadata: {
+        timestamp: new Date().toISOString(),
+        latency_ms: Date.now() - startTime
+      }
+    };
+  }
+
+  return results;
 }
