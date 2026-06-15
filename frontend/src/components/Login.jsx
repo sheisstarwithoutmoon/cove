@@ -1,12 +1,10 @@
 import { signInWithPopup } from "firebase/auth";
 import { auth, googleProvider } from "../firebase";
 import { useTheme } from "./ThemeContext";
-import useResponsive from "../hooks/useResponsive";
 import { IconSearch, IconBrain, IconGlobe, IconFileText, IconShield, IconEdit, IconSun, IconMoon } from "./Icons";
 
 export default function Login() {
-  const { theme, isDark, toggleTheme } = useTheme();
-  const isMobile = useResponsive(900);
+  const { isDark, toggleTheme } = useTheme();
 
   const handleLogin = async () => {
     try {

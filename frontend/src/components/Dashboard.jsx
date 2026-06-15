@@ -19,7 +19,7 @@ import "./Dashboard.css";
 const API = process.env.REACT_APP_API_URL || "http://localhost:8000";
 
 export default function Dashboard() {
-  const { theme } = useTheme();
+  const { isDark, toggleTheme } = useTheme();
   const { getToken, user } = useAuth();
   const isMobile = useResponsive(900);
 

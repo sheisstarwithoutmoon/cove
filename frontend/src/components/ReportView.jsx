@@ -1,10 +1,7 @@
-import { useTheme } from "./ThemeContext";
-import useResponsive from "../hooks/useResponsive";
 import { IconArrowLeft, IconCheck, IconAlertTriangle, IconExternalLink } from "./Icons";
 
 export default function ReportView({ report, onBack }) {
-  const { theme } = useTheme();
-  const isMobile = useResponsive(900);
+  // No theme or isMobile needed for CSS
 
   const confidenceColor = (c) => ({ high: "var(--success)", medium: "var(--warning)", low: "var(--danger)" }[c] || "var(--text-tertiary)");
   const confidenceBg = (c) => ({ high: "var(--success-bg)", medium: "var(--warning-bg)", low: "var(--danger-bg)" }[c] || "transparent");

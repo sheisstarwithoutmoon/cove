@@ -1,10 +1,8 @@
 import { useTheme } from "./ThemeContext";
-import useResponsive from "../hooks/useResponsive";
 import { IconPaperclip, IconBrain, IconGlobe, IconFileText, IconShield, IconEdit, IconCheck, IconLoader } from "./Icons";
 
 export default function AgentProgress({ updates }) {
   const { theme, isDark } = useTheme();
-  const isMobile = useResponsive(900);
 
   const AGENTS = {
     pdf:          { Icon: IconPaperclip,  label: "PDF Context",       color: theme.agentPdf },
