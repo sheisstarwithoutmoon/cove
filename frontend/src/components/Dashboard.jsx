@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from "react";
 import axios from "axios";
-import { useTheme } from "./ThemeContext";
 import useResponsive from "../hooks/useResponsive";
 import { useAuth } from "../hooks/useAuth";
 
@@ -19,7 +18,7 @@ import "./Dashboard.css";
 const API = process.env.REACT_APP_API_URL || "http://localhost:8000";
 
 export default function Dashboard() {
-  const { isDark, toggleTheme } = useTheme();
+  // Theme provided by Context
   const { getToken, user } = useAuth();
   const isMobile = useResponsive(900);
 

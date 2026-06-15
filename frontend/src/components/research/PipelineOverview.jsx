@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import { IconBrain, IconGlobe, IconFileText, IconShield, IconEdit } from '../Icons';
 
 const PIPELINE_STEPS = [

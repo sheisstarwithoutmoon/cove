@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 
 const EXAMPLES = [
   "Impact of AI on healthcare in 2024",
