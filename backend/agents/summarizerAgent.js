@@ -30,14 +30,18 @@ export async function summarizerAgent(
     ? `\n\nAdditional context from user PDF (supplementary, not a citation):\n${pdfContext.slice(0, 2000)}`
     : "";
 
-  const batchSize = 8;
+  const BATCH_SIZE = 5;
+  const DELAY_MS = 2000;
+  
   const batches = [];
-
-  for (let i = 0; i < searchResults.length; i += batchSize) {
-    batches.push(searchResults.slice(i, i + batchSize));
+  for (let i = 0; i < searchResults.length; i += BATCH_SIZE) {
+    batches.push(searchResults.slice(i, i + BATCH_SIZE));
   }
 
-  const batchPromises = batches.map(async (batch) => {
+  const results = [];
+
+  for (let i = 0; i < batches.length; i++) {
+    const batch = batches[i];
     const localSummaries = [];
 
     const validSources = batch.filter(
@@ -45,7 +49,7 @@ export async function summarizerAgent(
     );
 
     if (validSources.length === 0) {
-      return localSummaries;
+      continue;
     }
 
     const sourcesPromptBlock = validSources
@@ -64,12 +68,13 @@ export async function summarizerAgent(
               role: "system",
               content: `You are a research summarizer.
 
-Extract 2-3 factual claims relevant to the query.
+First, check if the source is clearly relevant to the query. If it is completely unrelated or irrelevant, return an empty array for that source's claims.
+Otherwise, extract 2-3 factual claims relevant to the query.
 
 Return ONLY JSON:
 {
 "url1":["claim1","claim2"],
-"url2":["claim3","claim4"]
+"url2":[]
 }`
             },
             {
@@ -97,14 +102,18 @@ Return ONLY JSON:
           [result.snippet.substring(0, 200)];
 
         const stringClaims = (Array.isArray(claimsArray) ? claimsArray : [String(claimsArray)])
-          .map(c => typeof c === 'string' ? c : (c.text || JSON.stringify(c)));
+          .map(c => typeof c === 'string' ? c : (c.text || JSON.stringify(c)))
+          .filter(c => c.trim().length > 0);
+          
+        const isIrrelevant = stringClaims.length === 0;
 
         localSummaries.push({
           url: result.url,
           title: result.title,
           claims: stringClaims,
           claimsCount: stringClaims.length,
-          confidence: "medium",
+          confidence: isIrrelevant ? "low" : "medium",
+          note: isIrrelevant ? "irrelevant source" : undefined,
           snippet: result.snippet,
           source_type: result.source_type,
           published_date: result.published_date,
@@ -112,7 +121,7 @@ Return ONLY JSON:
         });
       }
 
-      return localSummaries;
+      results.push(...localSummaries);
     }
     catch (e) {
 
@@ -138,14 +147,14 @@ Return ONLY JSON:
         });
       }
 
-      return localSummaries;
+      results.push(...localSummaries);
     }
-  });
-
-  const batchResults =
-    await Promise.all(batchPromises);
-
-  const results = batchResults.flat();
+    
+    // Delay before processing the next batch to respect rate limits
+    if (i < batches.length - 1) {
+      await new Promise(r => setTimeout(r, DELAY_MS));
+    }
+  }
 
   if (isEnvelope) {
     return {

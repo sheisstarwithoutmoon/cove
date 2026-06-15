@@ -123,7 +123,7 @@ app.post("/pdf/context", authMiddleware, upload.single("file"), async (req, res)
 
 // Streaming endpoint — sends live agent updates via SSE
 app.post("/research/stream", authMiddleware, async (req, res) => {
-  const { query, pdfContext, pdfMeta } = req.body;
+  const { query, pdfContext, pdfMeta, deepResearch } = req.body;
   if (!query) return res.status(400).json({ error: "Query is required" });
 
   res.setHeader("Content-Type", "text/event-stream");
@@ -133,7 +133,7 @@ app.post("/research/stream", authMiddleware, async (req, res) => {
   const send = (data) => res.write(`data: ${JSON.stringify(data)}\n\n`);
 
   try {
-    const report = await runResearchPipeline(query, send, { pdfContext, pdfMeta });
+    const report = await runResearchPipeline(query, send, { pdfContext, pdfMeta, deepResearch });
 
     // Save to Firestore
     const reportId = await saveReport(req.user.uid, query, report);
@@ -149,12 +149,12 @@ app.post("/research/stream", authMiddleware, async (req, res) => {
 
 // Non-streaming fallback endpoint
 app.post("/research", authMiddleware, async (req, res) => {
-  const { query, pdfContext, pdfMeta } = req.body;
+  const { query, pdfContext, pdfMeta, deepResearch } = req.body;
   if (!query) return res.status(400).json({ error: "Query is required" });
 
   try {
     const updates = [];
-    const report = await runResearchPipeline(query, (u) => updates.push(u), { pdfContext, pdfMeta });
+    const report = await runResearchPipeline(query, (u) => updates.push(u), { pdfContext, pdfMeta, deepResearch });
     const reportId = await saveReport(req.user.uid, query, report);
     res.json({ reportId, report });
   } catch (e) {

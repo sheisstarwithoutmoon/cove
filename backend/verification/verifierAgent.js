@@ -138,6 +138,7 @@ export async function verifierAgent(summariesOrMessage) {
       title: source.title,
       urlAlive,
       claims: verifiedClaims,
+      claimsCount: verifiedClaims.length,
       confidence: overall,
       snippet: source.snippet,
       source_type: source.source_type,

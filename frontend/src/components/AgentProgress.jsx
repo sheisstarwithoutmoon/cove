@@ -23,7 +23,10 @@ export default function AgentProgress({ updates }) {
     reporter:     { Icon: IconEdit,       label: "Report Writer",     color: theme.agentReporter },
   };
 
-  const ORDER = ["pdf", "orchestrator", "search", "summarizer", "verifier", "reporter"];
+  const hasPdf = updates.some((x) => x.agent === "pdf");
+  const ORDER = hasPdf 
+    ? ["pdf", "orchestrator", "search", "summarizer", "verifier", "reporter"]
+    : ["orchestrator", "search", "summarizer", "verifier", "reporter"];
 
   const getStatus = (key) => {
     const u = updates.filter((x) => x.agent === key);

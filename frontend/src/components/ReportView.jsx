@@ -47,6 +47,14 @@ export default function ReportView({ report, onBack }) {
         <p style={s.body}>{report.executive_summary}</p>
       </Section>
 
+      {report.comprehensive_analysis && report.comprehensive_analysis.length > 0 && (
+        <Section label="Detailed Analysis" theme={theme}>
+          {report.comprehensive_analysis.map((paragraph, idx) => (
+            <p key={idx} style={{ ...s.body, marginBottom: 14 }}>{paragraph}</p>
+          ))}
+        </Section>
+      )}
+
       <Section label="Key Findings" theme={theme}>
         {report.key_findings?.map((f, i) => (
           <div key={i} style={s.finding}>

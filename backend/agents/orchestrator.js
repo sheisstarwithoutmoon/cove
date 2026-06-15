@@ -4,6 +4,7 @@ import { summarizerAgent } from "./summarizerAgent.js";
 import { verifierAgent } from "../verification/verifierAgent.js";
 import { reportAgent } from "./reportAgent.js";
 import { safeJsonParse } from "../utils/safeJsonParse.js";
+import { storeDocumentInVectorDb, retrieveTopChunks } from "../retrieval/vectorStore.js";
 
 /**
  * Tracks the agent's research actions, search results, summarizations, and verifications.
@@ -12,12 +13,12 @@ export class AgentMemory {
   constructor(query, pdfContext = "") {
     this.query = query;
     this.pdfContext = pdfContext;
-    this.steps = [];             // list of { thought, action, params, observation }
-    this.sources = [];           // raw unique sources: { url, title, snippet, source_type, ... }
-    this.summaries = [];         // claims: { url, title, claims, snippet, ... }
-    this.verifiedSources = [];   // verified results: { url, title, urlAlive, claims, confidence, ... }
-    this.searchHistory = [];     // record of queries searched
-    this.messageLog = [];        // tracks structured inter-agent messages for logging/auditing
+    this.steps = [];
+    this.sources = [];
+    this.summaries = [];
+    this.verifiedSources = [];
+    this.searchHistory = [];
+    this.messageLog = [];
   }
 
   addStep(thought, action, params, observation) {
@@ -25,37 +26,24 @@ export class AgentMemory {
   }
 
   logMessage(message) {
-    this.messageLog.push({
-      ...message,
-      loggedAt: new Date().toISOString()
-    });
+    this.messageLog.push({ ...message, loggedAt: new Date().toISOString() });
   }
 
   getScratchpad() {
     if (this.steps.length === 0) return "No steps taken yet.";
     return this.steps.map((step, idx) => {
       let observationStr = typeof step.observation === 'object'
-        ? JSON.stringify(step.observation)
-        : String(step.observation);
-      
-      // Truncate overly long observations to avoid flooding context window
-      if (observationStr.length > 600) {
-        observationStr = observationStr.slice(0, 600) + "... (truncated)";
-      }
-      
-      return `Step ${idx + 1}:
-Thought: ${step.thought}
-Action: ${step.action}(${JSON.stringify(step.params || {})})
-Observation: ${observationStr}`;
+        ? JSON.stringify(step.observation) : String(step.observation);
+      if (observationStr.length > 600) observationStr = observationStr.slice(0, 600) + "... (truncated)";
+      return `Step ${idx + 1}:\nThought: ${step.thought}\nAction: ${step.action}(${JSON.stringify(step.params || {})})\nObservation: ${observationStr}`;
     }).join("\n\n");
   }
 }
 
-// Define the schema for the ReAct step decision
 const reactDecisionSchema = {
   type: "OBJECT",
   properties: {
-    thought: {
+    thought: { 
       type: "STRING",
       description: "Analyze what info is missing, what tool is best to run next, or if we have enough info to finish."
     },
@@ -66,11 +54,11 @@ const reactDecisionSchema = {
     },
     params: {
       type: "OBJECT",
-      properties: {
-        subQuery: {
+      properties: { 
+        subQuery: { 
           type: "STRING",
           description: "The research search query string to run."
-        }
+        } 
       },
       description: "Parameters for the action. Required for 'search_query'."
     }
@@ -78,111 +66,85 @@ const reactDecisionSchema = {
   required: ["thought", "action"]
 };
 
-// planSubQuestions removed as dead code. The orchestrator plans query paths dynamically inside the ReAct loop.
-
-/**
- * Runs the dynamic ReAct research pipeline.
- */
 export async function runResearchPipeline(query, onUpdate, options = {}) {
-  const { pdfContext = "", pdfMeta = null } = options;
+  const { pdfContext = "", pdfMeta = null, deepResearch = false } = options;
 
-  // Initialize Memory
   const memory = new AgentMemory(query, pdfContext);
 
-  // Define Tool Registry using Agent Communication Protocol (Structured Message Envelopes)
   const tools = {
     search_query: async (params) => {
       const { subQuery } = params;
-      if (!subQuery) {
-        return "Error: subQuery parameter is required for search_query tool.";
-      }
+      if (!subQuery) return "Error: subQuery parameter is required for search_query tool.";
       
-      const startTime = Date.now();
       memory.searchHistory.push(subQuery);
       
-      // Outgoing Search Request Envelope
       const searchRequestMsg = {
-        from: "orchestrator_agent",
-        to: "search_agent",
-        type: "SEARCH_REQUEST",
-        payload: { subQuery },
-        metadata: { timestamp: new Date().toISOString() }
+        from: "orchestrator_agent", to: "search_agent", type: "SEARCH_REQUEST",
+        payload: { subQuery }, metadata: { timestamp: new Date().toISOString() }
       };
       memory.logMessage(searchRequestMsg);
 
-      onUpdate({
-        type: "agent_start",
-        agent: "search",
-        message: `Coordinating retrieval for: "${subQuery}"...`
-      });
+      onUpdate({ type: "agent_start", agent: "search", message: `Coordinating retrieval for: "${subQuery}"...` });
       
       const responseEnvelope = await unifiedSearch(searchRequestMsg, onUpdate);
       memory.logMessage(responseEnvelope);
 
       const results = responseEnvelope.payload?.results || [];
       
-      // Deduplicate by URL and store raw results
       let newCount = 0;
+      const newUrls = [];
       results.forEach(res => {
         if (res.url && !memory.sources.some(s => s.url === res.url)) {
           memory.sources.push(res);
+          newUrls.push(res.url);
           newCount++;
         }
       });
-
-      onUpdate({
-        type: "agent_done",
-        agent: "search",
-        message: `Search finished. Found ${results.length} total results. Added ${newCount} new sources.`
-      });
       
+      if (deepResearch && newUrls.length > 0) {
+        onUpdate({
+          type: "agent_start",
+          agent: "scraper",
+          message: `Deep RAG: Downloading and vectorizing ${newUrls.length} full documents...`
+        });
+        await Promise.allSettled(newUrls.map(url => storeDocumentInVectorDb(url)));
+      }
+
+      onUpdate({ type: "agent_done", agent: "search", message: `Search finished. Found ${results.length} results. Added ${newCount} new sources.` });
       return `Search completed. Found ${results.length} total results. Added ${newCount} new unique sources. Total unique sources now: ${memory.sources.length}.`;
     },
     
     summarize_sources: async () => {
-      // Find sources that have not been summarized yet
-      const unsummarized = memory.sources.filter(
-        src => !memory.summaries.some(sum => sum.url === src.url)
-      );
+      const unsummarized = memory.sources.filter(src => !memory.summaries.some(sum => sum.url === src.url));
+      if (unsummarized.length === 0) return "No new unsummarized sources in memory. Run search_query with a new query first.";
       
-      if (unsummarized.length === 0) {
-        return "No new unsummarized sources in memory. Run search_query with a new query first.";
+      if (deepResearch) {
+        onUpdate({ type: "agent_start", agent: "scraper", message: `Deep RAG: Retrieving highest density semantic vectors...` });
+        const topChunks = await retrieveTopChunks(query, 20); // Top 20 chunks globally
+        unsummarized.forEach(source => {
+          const sourceChunks = topChunks.filter(c => c.url === source.url);
+          if (sourceChunks.length > 0) {
+            source.snippet = "DEEP PASSAGES EXTRACTED:\n" + sourceChunks.map(c => `"...${c.text}..."`).join("\n\n");
+          }
+        });
       }
-      
-      // Outgoing Summarization Request Envelope
+
       const summarizeRequestMsg = {
-        from: "orchestrator_agent",
-        to: "summarizer_agent",
-        type: "SUMMARIZATION_REQUEST",
-        payload: {
-          query,
-          searchResults: unsummarized,
-          pdfContext
-        },
+        from: "orchestrator_agent", to: "summarizer_agent", type: "SUMMARIZATION_REQUEST",
+        payload: { query, searchResults: unsummarized, pdfContext },
         metadata: { timestamp: new Date().toISOString() }
       };
       memory.logMessage(summarizeRequestMsg);
 
-      onUpdate({
-        type: "agent_start",
-        agent: "summarizer",
-        message: `Reading and extracting claims from ${unsummarized.length} sources...`
-      });
+      onUpdate({ type: "agent_start", agent: "summarizer", message: `Reading and extracting claims from ${unsummarized.length} sources...` });
       
       const responseEnvelope = await summarizerAgent(summarizeRequestMsg);
       memory.logMessage(responseEnvelope);
 
       const newSummaries = responseEnvelope.payload?.summaries || [];
-      
-      // Add to summaries memory
       memory.summaries.push(...newSummaries);
       
-      onUpdate({
-        type: "agent_done",
-        agent: "summarizer",
-        message: `Extracted key claims from ${unsummarized.length} sources.`
-      });
-      
+      onUpdate({ type: "agent_done", agent: "summarizer", message: `Extracted key claims from ${unsummarized.length} sources.` });
       return `Summarization completed. Summarized ${unsummarized.length} sources. Total summarized sources: ${memory.summaries.length}.`;
     },
     
@@ -350,7 +312,8 @@ Decide your next action:`;
       query,
       verifiedSources: memory.verifiedSources,
       pdfContext,
-      pdfMeta
+      pdfMeta,
+      deepResearch
     },
     metadata: { timestamp: new Date().toISOString() }
   };

@@ -24,6 +24,7 @@ export default function Dashboard({ user }) {
   ];
 
   const [query, setQuery] = useState("");
+  const [deepResearch, setDeepResearch] = useState(false);
   const [view, setView] = useState("home");
   const [agentUpdates, setAgentUpdates] = useState([]);
   const [report, setReport] = useState(null);
@@ -171,13 +172,13 @@ export default function Dashboard({ user }) {
     setError(null);
     try {
       const token = await getToken();
-      let payload = { query };
+      let payload = { query, deepResearch };
       if (pdfFile) {
         setAgentUpdates([{ type: "agent_start", agent: "pdf", message: `Reading ${pdfFile.name}...` }]);
         const pdfData = await processPdfContext(pdfFile);
         if (!pdfData?.context) { setError("Could not read PDF context. Try another file."); setView("home"); return; }
         setAgentUpdates((prev) => [...prev, { type: "agent_done", agent: "pdf", message: `Attached context from ${pdfData.meta?.pageCount || 0} pages` }]);
-        payload = { query, pdfContext: pdfData.context, pdfMeta: pdfData.meta };
+        payload = { query, pdfContext: pdfData.context, pdfMeta: pdfData.meta, deepResearch };
       }
       const response = await fetch(`${API}/research/stream`, {
         method: "POST",
@@ -416,6 +417,30 @@ export default function Dashboard({ user }) {
               <button style={{ ...s.goBtn, opacity: query.trim() ? 1 : 0.4 }} onClick={handlePrimaryAction} disabled={!query.trim()}>
                 <span>Research</span>
                 <IconArrowRight size={15} color="#fff" />
+              </button>
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "center", marginBottom: 24 }}>
+              <button 
+                onClick={() => setDeepResearch(!deepResearch)}
+                style={{
+                  background: deepResearch ? "linear-gradient(135deg, #6366f1, #a855f7)" : "transparent",
+                  border: deepResearch ? "none" : `1px solid ${theme.border}`,
+                  padding: "8px 16px",
+                  borderRadius: 999,
+                  color: deepResearch ? "#fff" : theme.textSecondary,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  transition: "all 0.3s ease",
+                  boxShadow: deepResearch ? "0 4px 12px rgba(168, 85, 247, 0.3)" : "none",
+                }}
+              >
+                <IconBrain size={15} color={deepResearch ? "#fff" : theme.textMuted} />
+                {deepResearch ? "Deep Research Enabled" : "Enable Deep Research"}
               </button>
             </div>
 
