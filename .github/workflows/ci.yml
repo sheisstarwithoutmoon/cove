@@ -1,0 +1,38 @@
+name: CI
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [22.x]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+          cache-dependency-path: |
+            backend/package-lock.json
+            frontend/package-lock.json
+
+      - name: Install & Test Backend
+        env:
+          GROQ_API_KEY: dummy_key
+          GEMINI_API_KEY: dummy_key
+        run: |
+          cd backend
+          npm ci
+          npm test
+
+      - name: Install & Test Frontend
+        run: |
+          cd frontend
+          npm ci
+          npm test -- --watchAll=false --passWithNoTests

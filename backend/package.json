@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "start": "node index.js",
-    "dev": "nodemon index.js"
+    "dev": "nodemon index.js",
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js"
   },
   "dependencies": {
     "@google/genai": "^2.8.0",
@@ -27,6 +28,7 @@
   },
   "devDependencies": {
     "drizzle-kit": "^0.31.10",
+    "jest": "^30.4.2",
     "nodemon": "^3.1.7"
   }
 }
