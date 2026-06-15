@@ -5,6 +5,8 @@ import { verifierAgent } from "../verification/verifierAgent.js";
 import { reportAgent } from "./reportAgent.js";
 import { safeJsonParse } from "../utils/safeJsonParse.js";
 import { storeDocumentInVectorDb, retrieveTopChunks } from "../retrieval/vectorStore.js";
+import { inputGuard } from "../guardrails/input_guard.js";
+import { outputGuard } from "../guardrails/output_guard.js";
 
 /**
  * Tracks the agent's research actions, search results, summarizations, and verifications.
@@ -68,6 +70,13 @@ const reactDecisionSchema = {
 
 export async function runResearchPipeline(query, onUpdate, options = {}) {
   const { pdfContext = "", pdfMeta = null, deepResearch = false } = options;
+
+  onUpdate({ type: "agent_start", agent: "orchestrator", message: "Running security checks on input query..." });
+  const safetyCheck = await inputGuard(query);
+  if (!safetyCheck.safe) {
+    onUpdate({ type: "agent_done", agent: "orchestrator", message: "Query blocked by security policy." });
+    throw new Error(`Query blocked by Safety Guardrails: ${safetyCheck.reason}`);
+  }
 
   const memory = new AgentMemory(query, pdfContext);
 
@@ -323,6 +332,13 @@ Decide your next action:`;
   memory.logMessage(reportResponseEnvelope);
 
   const report = reportResponseEnvelope.payload?.report || reportResponseEnvelope; // fallback support
+
+  onUpdate({ type: "agent_start", agent: "reporter", message: "Running security checks on output report..." });
+  const outputSafety = await outputGuard(report);
+  if (!outputSafety.safe) {
+    onUpdate({ type: "agent_done", agent: "reporter", message: "Output blocked by security policy." });
+    throw new Error(outputSafety.reason);
+  }
 
   onUpdate({ type: "agent_done", agent: "reporter", message: "Report ready!" });
 
