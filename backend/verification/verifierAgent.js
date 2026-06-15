@@ -1,6 +1,11 @@
 import axios from "axios";
-import { ai } from "../utils/gemini.js";
+import Groq from "groq-sdk";
+import dotenv from "dotenv";
 import { safeJsonParse } from "../utils/safeJsonParse.js";
+
+dotenv.config();
+
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 async function checkUrlAlive(url) {
   try {
@@ -17,43 +22,39 @@ async function checkUrlAlive(url) {
 
 async function verifyClaimAgainstSource(claim, snippet) {
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: `Claim: ${claim}\n\nSource snippet: ${snippet}`,
-      config: {
-        systemInstruction: `You are a citation verifier.
+    const response = await groq.chat.completions.create({
+      model: "llama-3.3-70b-versatile",
+      messages: [
+        {
+          role: "system",
+          content: `You are a citation verifier.
 
 Determine whether the claim is:
 SUPPORTED
 PARTIALLY_SUPPORTED
 CONTRADICTED
-INSUFFICIENT_EVIDENCE`,
-        temperature: 0.1,
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: "OBJECT",
-          properties: {
-            status: {
-              type: "STRING",
-              enum: ["SUPPORTED", "PARTIALLY_SUPPORTED", "CONTRADICTED", "INSUFFICIENT_EVIDENCE"]
-            },
-            confidence: {
-              type: "STRING",
-              enum: ["high", "medium", "low"]
-            },
-            reason: {
-              type: "STRING"
-            },
-            evidence: {
-              type: "STRING"
-            }
-          },
-          required: ["status", "confidence", "reason", "evidence"]
+INSUFFICIENT_EVIDENCE
+
+Return ONLY JSON:
+{
+  "status":"SUPPORTED|PARTIALLY_SUPPORTED|CONTRADICTED|INSUFFICIENT_EVIDENCE",
+  "confidence":"high|medium|low",
+  "reason":"one line explanation",
+  "evidence":"direct quote from snippet or empty string"
+}`
+        },
+        {
+          role: "user",
+          content: `Claim: ${claim}\n\nSource snippet: ${snippet}`
         }
+      ],
+      temperature: 0.1,
+      response_format: {
+        type: "json_object"
       }
     });
 
-    const text = response.text;
+    const text = response.choices[0].message.content;
 
     return safeJsonParse(text, {
       status: "INSUFFICIENT_EVIDENCE",
@@ -88,16 +89,18 @@ export async function verifierAgent(summariesOrMessage) {
   .map(async (source) => {
     const urlAlive = await checkUrlAlive(source.url);
 
-    const claimPromises = (source.claims || []).map(async (claim) => {
+    const claimPromises = (source.claims || []).map(async (claim, index) => {
+      const claimText = typeof claim === "string" ? claim : (claim.text || JSON.stringify(claim));
       const result = await verifyClaimAgainstSource(
-        claim.text,
+        claimText,
         source.snippet
       );
 
       return {
-        id: claim.id,
-        text: claim.text,
+        id: `${source.url}-${index}`,
+        claim: claimText,
         evidence: result.evidence || "",
+        supported: result.status === "SUPPORTED" || result.status === "PARTIALLY_SUPPORTED",
         status: result.status || "INSUFFICIENT_EVIDENCE",
         confidence: result.confidence || "low",
         reason: result.reason || "",

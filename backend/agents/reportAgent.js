@@ -1,5 +1,10 @@
-import { ai } from "../utils/gemini.js";
+import Groq from "groq-sdk";
+import dotenv from "dotenv";
 import { safeJsonParse } from "../utils/safeJsonParse.js";
+
+dotenv.config();
+
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 export async function reportAgent(
   queryOrMessage,
@@ -60,40 +65,41 @@ export async function reportAgent(
   };
 
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: `Research Query: ${query}\n\nVerified Sources:\n${sourcesText}${additionalContext}`,
-      config: {
-        systemInstruction: `You are a research report writer. Write a structured report based on verified web sources. Use additional PDF context only as user background context and never as external citation.`,
-        temperature: 0.3,
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: "OBJECT",
-          properties: {
-            title: { type: "STRING" },
-            executive_summary: { type: "STRING" },
-            key_findings: {
-              type: "ARRAY",
-              items: {
-                type: "OBJECT",
-                properties: {
-                  finding: { type: "STRING" },
-                  evidence: { type: "STRING" },
-                  source_index: { type: "INTEGER" },
-                  source_title: { type: "STRING" },
-                  source_url: { type: "STRING" }
-                },
-                required: ["finding", "evidence", "source_index", "source_title", "source_url"]
-              }
-            },
-            conclusion: { type: "STRING" }
-          },
-          required: ["title", "executive_summary", "key_findings", "conclusion"]
+    const response = await groq.chat.completions.create({
+      model: "llama-3.3-70b-versatile",
+      messages: [
+        {
+          role: "system",
+          content: `You are a research report writer. Write a structured report based on verified web sources. Use additional PDF context only as user background context and never as external citation.
+Return ONLY JSON with this structure:
+{
+  "title": "Report title",
+  "executive_summary": "2-3 sentence overview",
+  "key_findings": [
+    { 
+      "finding": "Finding text", 
+      "evidence": "verbatim evidence snippet quote supporting this finding",
+      "source_index": 1, 
+      "source_title": "title", 
+      "source_url": "url" 
+    }
+  ],
+  "conclusion": "1-2 sentence conclusion"
+}`
+        },
+        {
+          role: "user",
+          content: `Research Query: ${query}\n\nVerified Sources:\n${sourcesText}${additionalContext}`
         }
+      ],
+      temperature: 0.3,
+      max_tokens: 2000,
+      response_format: {
+        type: "json_object"
       }
     });
 
-    let text = response.text;
+    let text = response.choices[0].message.content;
     const report = safeJsonParse(text, fallbackReport);
 
     report.sources = verifiedSources.map((s) => ({

@@ -1,5 +1,10 @@
-import { ai } from "../utils/gemini.js";
+import Groq from "groq-sdk";
+import dotenv from "dotenv";
 import { safeJsonParse } from "../utils/safeJsonParse.js";
+
+dotenv.config();
+
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 export async function summarizerAgent(
   queryOrMessage,
@@ -52,11 +57,12 @@ export async function summarizerAgent(
 
     try {
       const response =
-        await ai.models.generateContent({
-          model: "gemini-2.5-flash",
-          contents: `Query: ${query}\n\nSources:\n${sourcesPromptBlock}${contextBlock}`,
-          config: {
-            systemInstruction: `You are a research summarizer.
+        await groq.chat.completions.create({
+          model: "llama-3.3-70b-versatile",
+          messages: [
+            {
+              role: "system",
+              content: `You are a research summarizer.
 
 Extract 2-3 factual claims relevant to the query.
 
@@ -64,38 +70,41 @@ Return ONLY JSON:
 {
 "url1":["claim1","claim2"],
 "url2":["claim3","claim4"]
-}`,
-            temperature: 0.2,
-            responseMimeType: "application/json",
+}`
+            },
+            {
+              role: "user",
+              content: `Query: ${query}\n\nSources:\n${sourcesPromptBlock}${contextBlock}`
+            }
+          ],
+          temperature: 0.2,
+          response_format: {
+            type: "json_object"
           }
         });
 
       const text =
-        response.text;
+        response.choices[0].message.content;
 
       const batchClaims =
         safeJsonParse(text, {});
 
       for (const result of validSources) {
 
-        const claims =
+        const claimsArray =
           batchClaims[result.url] ||
+          batchClaims[`Source ${validSources.indexOf(result) + 1}`] ||
           [result.snippet.substring(0, 200)];
 
-        const structuredClaims =
-          (Array.isArray(claims)
-            ? claims
-            : [String(claims)]
-          ).map((claim, index) => ({
-            id: `${result.url}-${index}`,
-            text: claim,
-            status: "UNKNOWN"
-          }));
+        const stringClaims = (Array.isArray(claimsArray) ? claimsArray : [String(claimsArray)])
+          .map(c => typeof c === 'string' ? c : (c.text || JSON.stringify(c)));
 
         localSummaries.push({
           url: result.url,
           title: result.title,
-          claims: structuredClaims,
+          claims: stringClaims,
+          claimsCount: stringClaims.length,
+          confidence: "medium",
           snippet: result.snippet,
           source_type: result.source_type,
           published_date: result.published_date,
@@ -117,15 +126,11 @@ Return ONLY JSON:
         localSummaries.push({
           url: result.url,
           title: result.title,
-
           claims: [
-            {
-              id: `${result.url}-0`,
-              text: result.snippet.substring(0, 200),
-              status: "UNKNOWN"
-            }
+            result.snippet.substring(0, 200)
           ],
-
+          claimsCount: 1,
+          confidence: "low",
           snippet: result.snippet,
           source_type: result.source_type,
           published_date: result.published_date,
