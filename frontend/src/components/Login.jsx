@@ -1,20 +1,12 @@
-import { useEffect, useState } from "react";
 import { signInWithPopup } from "firebase/auth";
 import { auth, googleProvider } from "../firebase";
 import { useTheme } from "./ThemeContext";
+import useResponsive from "../hooks/useResponsive";
 import { IconSearch, IconBrain, IconGlobe, IconFileText, IconShield, IconEdit, IconSun, IconMoon } from "./Icons";
 
 export default function Login() {
   const { theme, isDark, toggleTheme } = useTheme();
-  const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 900);
-
-  useEffect(() => {
-    function handleResize() {
-      setIsMobile(window.innerWidth <= 900);
-    }
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, []);
+  const isMobile = useResponsive(900);
 
   const handleLogin = async () => {
     try {
@@ -24,29 +16,27 @@ export default function Login() {
     }
   };
 
-  const s = getStyles(theme, isDark, isMobile);
-
   return (
-    <div style={s.page}>
-      <div style={s.glow} />
+    <div className="login-page">
+      <div className={`login-glow ${isDark ? "login-glow-dark" : "login-glow-light"}`} />
 
       {/* Theme toggle — top right */}
-      <button style={s.themeToggle} onClick={toggleTheme} title={isDark ? "Switch to light mode" : "Switch to dark mode"}>
-        {isDark ? <IconSun size={16} color={theme.textTertiary} /> : <IconMoon size={16} color={theme.textTertiary} />}
+      <button className="login-theme-toggle" onClick={toggleTheme} title={isDark ? "Switch to light mode" : "Switch to dark mode"}>
+        {isDark ? <IconSun size={16} color="var(--text-tertiary)" /> : <IconMoon size={16} color="var(--text-tertiary)" />}
       </button>
 
-      <div style={s.card}>
-        <div style={s.logoCircle}>
-          <IconSearch size={26} color={theme.accentText} />
+      <div className="login-card">
+        <div className="login-logo-circle">
+          <IconSearch size={26} color="var(--accent-text)" />
         </div>
-        <h1 style={s.title}>Cove</h1>
-        <p style={s.sub}>
+        <h1 className="login-title">Cove</h1>
+        <p className="login-sub">
           Multi-agent AI research with verified citations.
           <br />
           No hallucinations. Every source checked.
         </p>
 
-        <div style={s.features}>
+        <div className="login-features">
           {[
             [IconBrain, "Orchestrator breaks down your query"],
             [IconGlobe, "Search agent finds real sources"],
@@ -54,16 +44,16 @@ export default function Login() {
             [IconShield, "Verifier checks every citation"],
             [IconEdit, "Report writer compiles findings"],
           ].map(([Icon, text], i) => (
-            <div key={i} style={s.feature}>
-              <div style={s.featureIcon}>
-                <Icon size={15} color={theme.accentLight} />
+            <div key={i} className="login-feature">
+              <div className="login-feature-icon">
+                <Icon size={15} color="var(--accent-light)" />
               </div>
               <span>{text}</span>
             </div>
           ))}
         </div>
 
-        <button style={s.btn} onClick={handleLogin}>
+        <button className={`login-btn ${isDark ? "login-btn-dark" : "login-btn-light"}`} onClick={handleLogin}>
           <svg width="18" height="18" viewBox="0 0 48 48" style={{ marginRight: 10, flexShrink: 0 }}>
             <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
             <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
@@ -75,122 +65,4 @@ export default function Login() {
       </div>
     </div>
   );
-}
-
-function getStyles(t, isDark, isMobile) {
-  return {
-    page: {
-      minHeight: "100vh",
-      background: t.bgPrimary,
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      fontFamily: "'Inter', 'Segoe UI', sans-serif",
-      position: "relative",
-      overflow: "hidden",
-    },
-    glow: {
-      position: "absolute",
-      width: 500,
-      height: 500,
-      borderRadius: "50%",
-      background: isDark
-        ? "radial-gradient(circle, rgba(124,58,237,0.1) 0%, transparent 70%)"
-        : "radial-gradient(circle, rgba(124,58,237,0.06) 0%, transparent 70%)",
-      top: "50%",
-      left: "50%",
-      transform: "translate(-50%, -50%)",
-      pointerEvents: "none",
-    },
-    themeToggle: {
-      position: "absolute",
-      top: isMobile ? 12 : 20,
-      right: isMobile ? 12 : 20,
-      background: t.bgElevated,
-      border: `1px solid ${t.border}`,
-      borderRadius: 10,
-      padding: "8px 10px",
-      cursor: "pointer",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      zIndex: 10,
-      transition: "all 0.2s ease",
-    },
-    card: {
-      background: isDark ? "rgba(255,255,255,0.03)" : "#ffffff",
-      backdropFilter: "blur(24px)",
-      border: `1px solid ${t.border}`,
-      borderRadius: 20,
-      padding: isMobile ? "28px 18px" : "48px 42px",
-      maxWidth: 440,
-      width: "90%",
-      textAlign: "center",
-      position: "relative",
-      zIndex: 1,
-      boxShadow: t.shadowMd,
-    },
-    logoCircle: {
-      width: 56,
-      height: 56,
-      borderRadius: 16,
-      background: t.accentBg,
-      border: `1px solid ${t.accentBorder}`,
-      display: "inline-flex",
-      alignItems: "center",
-      justifyContent: "center",
-      marginBottom: 20,
-    },
-    title: {
-      color: t.textPrimary,
-      fontSize: isMobile ? 26 : 30,
-      fontWeight: 700,
-      margin: "0 0 10px",
-      letterSpacing: "-0.5px",
-    },
-    sub: {
-      color: t.textTertiary,
-      fontSize: isMobile ? 13 : 14,
-      lineHeight: 1.65,
-      margin: "0 0 24px",
-    },
-    features: {
-      marginBottom: 32,
-      textAlign: "left",
-    },
-    feature: {
-      color: t.textSecondary,
-      fontSize: isMobile ? 12.5 : 13,
-      padding: "10px 0",
-      borderBottom: `1px solid ${t.borderSubtle}`,
-      display: "flex",
-      alignItems: "center",
-      gap: 12,
-    },
-    featureIcon: {
-      width: 32,
-      height: 32,
-      borderRadius: 8,
-      background: t.accentBg,
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      flexShrink: 0,
-    },
-    btn: {
-      background: isDark ? "#fff" : t.accent,
-      color: isDark ? "#1a1a2e" : "#fff",
-      border: "none",
-      borderRadius: 10,
-      padding: isMobile ? "11px 18px" : "12px 28px",
-      fontSize: 14,
-      fontWeight: 600,
-      cursor: "pointer",
-      display: "inline-flex",
-      alignItems: "center",
-      transition: "all 0.2s ease",
-      justifyContent: "center",
-      width: isMobile ? "100%" : "auto",
-    },
-  };
 }

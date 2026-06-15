@@ -18,7 +18,14 @@ export function ThemeProvider({ children }) {
 
   useEffect(() => {
     localStorage.setItem("cove-theme", isDark ? "dark" : "light");
-    // Update scrollbar CSS variables & background
+    
+    // Inject all theme variables dynamically as CSS Custom Properties
+    Object.entries(theme).forEach(([key, value]) => {
+      const kebabKey = key.replace(/([a-z0-9]|(?=[A-Z]))([A-Z])/g, '$1-$2').toLowerCase();
+      document.documentElement.style.setProperty(`--${kebabKey}`, value);
+    });
+    
+    // Legacy specific overrides
     document.documentElement.style.setProperty("--scroll-thumb", theme.scrollThumb);
     document.documentElement.style.setProperty("--scroll-thumb-hover", theme.scrollThumbHover);
     document.body.style.background = theme.bgPrimary;

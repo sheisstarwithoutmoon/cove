@@ -1,18 +1,10 @@
-import { useEffect, useState } from "react";
 import { useTheme } from "./ThemeContext";
+import useResponsive from "../hooks/useResponsive";
 import { IconPaperclip, IconBrain, IconGlobe, IconFileText, IconShield, IconEdit, IconCheck, IconLoader } from "./Icons";
 
 export default function AgentProgress({ updates }) {
   const { theme, isDark } = useTheme();
-  const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 900);
-
-  useEffect(() => {
-    function handleResize() {
-      setIsMobile(window.innerWidth <= 900);
-    }
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, []);
+  const isMobile = useResponsive(900);
 
   const AGENTS = {
     pdf:          { Icon: IconPaperclip,  label: "PDF Context",       color: theme.agentPdf },
@@ -39,103 +31,40 @@ export default function AgentProgress({ updates }) {
     return u.length ? u[u.length - 1].message : "Waiting...";
   };
 
-  const s = getStyles(theme, isMobile);
-
   return (
-    <div style={s.box}>
-      <div style={s.heading}>Research Pipeline</div>
+    <div className="ap-box">
+      <div className="ap-heading">Research Pipeline</div>
       {ORDER.map((key, i) => {
         const a = AGENTS[key];
         const status = getStatus(key);
         const Icon = a.Icon;
         return (
           <div key={key}>
-            <div style={{ ...s.row, opacity: status === "pending" ? (isDark ? 0.55 : 0.72) : 1 }}>
-              <div style={{
-                ...s.icon,
-                background: status === "done" ? a.color + "14" : theme.bgElevated,
-                borderColor: status !== "pending" ? a.color : theme.border,
-              }}>
-                <Icon size={18} color={status !== "pending" ? a.color : theme.textMuted} />
+            <div className={`ap-row ${status === "pending" ? (isDark ? "pending-dark" : "pending-light") : ""}`}>
+              <div 
+                className="ap-icon"
+                style={{
+                  background: status === "done" ? a.color + "14" : "var(--bg-elevated)",
+                  borderColor: status !== "pending" ? a.color : "var(--border)",
+                }}
+              >
+                <Icon size={18} color={status !== "pending" ? a.color : "var(--text-muted)"} />
               </div>
               <div style={{ flex: 1 }}>
-                <div style={{ ...s.name, color: status === "done" ? a.color : theme.textPrimary }}>
+                <div className="ap-name" style={{ color: status === "done" ? a.color : "var(--text-primary)" }}>
                   {a.label}
                 </div>
-                <div style={s.msg}>{getMessage(key)}</div>
+                <div className="ap-msg">{getMessage(key)}</div>
               </div>
-              <div style={s.statusBadge}>
-                {status === "running" && <IconLoader size={14} color={theme.info} />}
+              <div className="ap-status-badge">
+                {status === "running" && <IconLoader size={14} color="var(--info)" />}
                 {status === "done" && <IconCheck size={14} color={a.color} />}
               </div>
             </div>
-            {i < ORDER.length - 1 && <div style={s.line} />}
+            {i < ORDER.length - 1 && <div className="ap-line" />}
           </div>
         );
       })}
     </div>
   );
-}
-
-function getStyles(theme, isMobile) {
-  return {
-    box: {
-      background: theme.bgCard,
-      border: `1px solid ${theme.border}`,
-      borderRadius: 14,
-      padding: isMobile ? "14px 12px" : "22px 24px",
-      marginBottom: 24,
-    },
-    heading: {
-      color: theme.textTertiary,
-      fontSize: 11,
-      textTransform: "uppercase",
-      letterSpacing: 2,
-      fontWeight: 600,
-      marginBottom: 20,
-    },
-    row: {
-      display: "flex",
-      alignItems: "center",
-      gap: isMobile ? 10 : 14,
-      padding: "8px 0",
-      transition: "opacity 0.3s ease",
-    },
-    icon: {
-      width: 40,
-      height: 40,
-      borderRadius: 10,
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      flexShrink: 0,
-      border: "1px solid",
-      transition: "all 0.3s ease",
-    },
-    name: {
-      fontSize: 13,
-      fontWeight: 600,
-      marginBottom: 2,
-      transition: "color 0.3s ease",
-    },
-    msg: {
-      fontSize: isMobile ? 12 : 13,
-      color: theme.textMuted,
-      lineHeight: 1.4,
-    },
-    statusBadge: {
-      width: 20,
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      flexShrink: 0,
-    },
-    line: {
-      marginLeft: 20,
-      width: 1,
-      height: 12,
-      borderLeft: `1px dashed ${theme.borderSubtle}`,
-      margin: "1px 0 1px 20px",
-    },
-  };
 }
