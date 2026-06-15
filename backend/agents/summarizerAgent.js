@@ -1,11 +1,11 @@
-import Groq from "groq-sdk";
+import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
 import { safeJsonParse } from "../utils/safeJsonParse.js";
 
 dotenv.config();
 
-const groq = new Groq({
-  apiKey: process.env.GROQ_API_KEY
+const ai = new GoogleGenAI({
+  apiKey: process.env.GEMINI_API_KEY
 });
 
 export async function summarizerAgent(
@@ -44,36 +44,26 @@ export async function summarizerAgent(
 
     try {
       const response =
-        await groq.chat.completions.create({
-          model: "llama-3.3-70b-versatile",
-          messages: [
-            {
-              role: "system",
-              content: `You are a research summarizer.
+        await ai.models.generateContent({
+          model: "gemini-2.5-flash",
+          contents: `Query: ${query}\n\nSources:\n${sourcesPromptBlock}${contextBlock}`,
+          config: {
+            systemInstruction: `You are a research summarizer.
 
 Extract 2-3 factual claims relevant to the query.
 
 Return ONLY JSON:
-
 {
 "url1":["claim1","claim2"],
 "url2":["claim3","claim4"]
-}`
-            },
-            {
-              role: "user",
-              content:
-                `Query: ${query}\n\nSources:\n${sourcesPromptBlock}${contextBlock}`
-            }
-          ],
-          temperature: 0.2,
-          response_format: {
-            type: "json_object"
+}`,
+            temperature: 0.2,
+            responseMimeType: "application/json",
           }
         });
 
       const text =
-        response.choices[0].message.content;
+        response.text;
 
       const batchClaims =
         safeJsonParse(text, {});

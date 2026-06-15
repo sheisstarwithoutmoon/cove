@@ -1,5 +1,5 @@
 import axios from "axios";
-import Groq from "groq-sdk";
+import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
 import { dirname, resolve } from "path";
 import { fileURLToPath } from "url";
@@ -8,7 +8,7 @@ import { safeJsonParse } from "../utils/safeJsonParse.js";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: resolve(__dirname, "../.env") });
 
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 async function checkUrlAlive(url) {
   try {
@@ -25,39 +25,43 @@ async function checkUrlAlive(url) {
 
 async function verifyClaimAgainstSource(claim, snippet) {
   try {
-    const response = await groq.chat.completions.create({
-      model: "llama-3.3-70b-versatile",
-      messages: [
-        {
-          role: "system",
-          content: `You are a citation verifier.
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: `Claim: ${claim}\n\nSource snippet: ${snippet}`,
+      config: {
+        systemInstruction: `You are a citation verifier.
 
 Determine whether the claim is:
-
 SUPPORTED
 PARTIALLY_SUPPORTED
 CONTRADICTED
-INSUFFICIENT_EVIDENCE
-
-Return ONLY JSON:
-
-{
-  "status":"SUPPORTED|PARTIALLY_SUPPORTED|CONTRADICTED|INSUFFICIENT_EVIDENCE",
-  "confidence":"high|medium|low",
-  "reason":"one line explanation",
-  "evidence":"direct quote from snippet or empty string"
-}`,
-        },
-        {
-          role: "user",
-          content: `Claim: ${claim}\n\nSource snippet: ${snippet}`,
-        },
-      ],
-      temperature: 0.1,
-      response_format: { type: "json_object" },
+INSUFFICIENT_EVIDENCE`,
+        temperature: 0.1,
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: "OBJECT",
+          properties: {
+            status: {
+              type: "STRING",
+              enum: ["SUPPORTED", "PARTIALLY_SUPPORTED", "CONTRADICTED", "INSUFFICIENT_EVIDENCE"]
+            },
+            confidence: {
+              type: "STRING",
+              enum: ["high", "medium", "low"]
+            },
+            reason: {
+              type: "STRING"
+            },
+            evidence: {
+              type: "STRING"
+            }
+          },
+          required: ["status", "confidence", "reason", "evidence"]
+        }
+      }
     });
 
-    const text = response.choices[0].message.content;
+    const text = response.text;
 
     return safeJsonParse(text, {
       status: "INSUFFICIENT_EVIDENCE",
