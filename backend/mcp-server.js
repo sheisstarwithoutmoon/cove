@@ -181,6 +181,7 @@ async function main() {
   console.error("Cove MCP server running on stdio");
 }
 
+
 main().catch((error) => {
   console.error("Fatal error starting Cove MCP server:", error);
   process.exit(1);
