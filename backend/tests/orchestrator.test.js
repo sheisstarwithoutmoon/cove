@@ -1,8 +1,35 @@
 import { jest } from '@jest/globals';
 
+process.env.GROQ_API_KEY = "dummy_key";
+
 // Mock queryRewriter
 jest.unstable_mockModule("../retrieval/queryRewriter.js", () => ({
   rewriteAcademicQuery: jest.fn().mockResolvedValue("mock query")
+}));
+
+// Mock groq-sdk
+jest.unstable_mockModule("groq-sdk", () => ({
+  default: jest.fn().mockImplementation(() => ({
+    chat: {
+      completions: {
+        create: jest.fn().mockResolvedValue({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  category: "hybrid",
+                  reasoning: "mock reasoning",
+                  confidence: 0.9,
+                  title: "Mock Title",
+                  executive_summary: "Mock summary"
+                })
+              }
+            }
+          ]
+        })
+      }
+    }
+  }))
 }));
 
 // Mock Axios for search agents
@@ -17,9 +44,13 @@ jest.unstable_mockModule("../utils/gemini.js", () => ({
   ai: {
     models: {
       generateContent: jest.fn().mockResolvedValue({
-        text: () => JSON.stringify({
-          action: "final_report",
-          report: "This is a mock report."
+        text: JSON.stringify({
+          action: "finish",
+          report: "This is a mock report.",
+          title: "Mock Title",
+          executive_summary: "Mock summary",
+          safe: true,
+          reason: ""
         })
       }),
       embedContent: jest.fn().mockResolvedValue({
@@ -30,9 +61,13 @@ jest.unstable_mockModule("../utils/gemini.js", () => ({
   default: {
     models: {
       generateContent: jest.fn().mockResolvedValue({
-        text: () => JSON.stringify({
-          action: "final_report",
-          report: "This is a mock report."
+        text: JSON.stringify({
+          action: "finish",
+          report: "This is a mock report.",
+          title: "Mock Title",
+          executive_summary: "Mock summary",
+          safe: true,
+          reason: ""
         })
       }),
       embedContent: jest.fn().mockResolvedValue({

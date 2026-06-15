@@ -4,10 +4,17 @@ import { safeJsonParse } from "../utils/safeJsonParse.js";
 
 dotenv.config();
 
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+let groqInstance = null;
+function getGroq() {
+  if (!groqInstance) {
+    groqInstance = new Groq({ apiKey: process.env.GROQ_API_KEY });
+  }
+  return groqInstance;
+}
 
 export async function retrievalRouter(query) {
   try {
+    const groq = getGroq();
     const response = await groq.chat.completions.create({
       model: "llama-3.1-8b-instant",
       messages: [{
