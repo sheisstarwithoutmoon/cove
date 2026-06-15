@@ -1,4 +1,4 @@
-import Groq from "groq-sdk";
+import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
 import { dirname, resolve } from "path";
 import { fileURLToPath } from "url";
@@ -8,14 +8,14 @@ import { verifierAgent } from "../verification/verifierAgent.js";
 import { reportAgent } from "./reportAgent.js";
 import { safeJsonParse } from "../utils/safeJsonParse.js";
 
-// Load .env relative to this module so Groq has the API key when tests run from subfolders
+// Load .env relative to this module so Gemini has the API key when tests run from subfolders
 const __dirname = dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: resolve(__dirname, "../.env") });
-if (!process.env.GROQ_API_KEY) {
-  console.warn("[orchestrator] GROQ_API_KEY not found after loading .env (path:", resolve(__dirname, "../.env"), ")");
+if (!process.env.GEMINI_API_KEY) {
+  console.warn("[orchestrator] GEMINI_API_KEY not found after loading .env (path:", resolve(__dirname, "../.env"), ")");
 }
 
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 async function planSubQuestions(query, pdfContext = "") {
   try {
@@ -23,44 +23,33 @@ async function planSubQuestions(query, pdfContext = "") {
       ? `\n\nAdditional context from user PDF:\n${pdfContext.slice(0, 2500)}`
       : "";
 
-    const response = await groq.chat.completions.create({
-      model: "llama-3.3-70b-versatile",
-      messages: [
-        {
-          role: "system",
-          ccontent: `
-Break the user's query into at most four NON-OVERLAPPING research questions.
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: `Query: ${query}${contextBlock}`,
+      config: {
+        systemInstruction: `Break the user's query into at most four NON-OVERLAPPING research questions.
 
 Avoid asking the same thing twice.
 
 Try to cover:
-
 - concepts
 - mechanisms
 - comparisons
 - applications
 
-Each question should explore a different aspect.
-
-Return ONLY a JSON array of strings.
-
-Example:
-
-[
-"What is RLHF?",
-"How does RLHF work?",
-"How does RLHF compare with DPO?",
-"What are practical applications of RLHF?"
-]
-`,
-        },
-        { role: "user", content: `Query: ${query}${contextBlock}` },
-      ],
-      temperature: 0.3,
-      response_format: { type: "json_object" }
+Each question should explore a different aspect.`,
+        temperature: 0.3,
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: "ARRAY",
+          items: {
+            type: "STRING"
+          }
+        }
+      }
     });
     
-    const text = response.choices[0].message.content;
+    const text = response.text;
     const parsed = safeJsonParse(text, [query]);
     
     if (Array.isArray(parsed)) {
