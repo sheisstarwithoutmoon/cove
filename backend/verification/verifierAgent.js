@@ -22,12 +22,7 @@ async function checkUrlAlive(url) {
 
 async function verifyClaimAgainstSource(claim, snippet) {
   try {
-    const response = await groq.chat.completions.create({
-      model: "llama-3.3-70b-versatile",
-      messages: [
-        {
-          role: "system",
-          content: `You are a citation verifier.
+    const systemPrompt = `You are a citation verifier. Think step by step. First, identify the main claim. Then, find the evidence in the source. Then, assess whether the evidence supports the claim. Finally, give your verdict.
 
 Determine whether the claim is:
 SUPPORTED
@@ -37,31 +32,90 @@ INSUFFICIENT_EVIDENCE
 
 Return ONLY JSON:
 {
-  "status":"SUPPORTED|PARTIALLY_SUPPORTED|CONTRADICTED|INSUFFICIENT_EVIDENCE",
-  "confidence":"high|medium|low",
-  "reason":"one line explanation",
-  "evidence":"direct quote from snippet or empty string"
-}`
-        },
-        {
-          role: "user",
-          content: `Claim: ${claim}\n\nSource snippet: ${snippet}`
-        }
-      ],
-      temperature: 0.1,
-      response_format: {
-        type: "json_object"
+  "thought_process": "Step-by-step reasoning...",
+  "status": "SUPPORTED|PARTIALLY_SUPPORTED|CONTRADICTED|INSUFFICIENT_EVIDENCE",
+  "confidence": "high|medium|low",
+  "reason": "one line explanation",
+  "evidence": "direct quote from snippet or empty string"
+}
+
+Example 1:
+Claim: 'GPT-4 has 1 trillion parameters'
+Source: 'OpenAI has not disclosed GPT-4's parameter count'
+Output: {
+  "thought_process": "1. Main claim: GPT-4 has 1 trillion parameters. 2. Evidence: OpenAI has not disclosed parameter count. 3. Assessment: The source explicitly states parameters are undisclosed. 4. Verdict: CONTRADICTED.",
+  "status": "CONTRADICTED",
+  "confidence": "high",
+  "reason": "The source explicitly states parameters are undisclosed.",
+  "evidence": "OpenAI has not disclosed GPT-4's parameter count"
+}`;
+
+    const makeCall = (temperature) => 
+      groq.chat.completions.create({
+        model: "llama-3.3-70b-versatile",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: `Claim: ${claim}\n\nSource snippet: ${snippet}` }
+        ],
+        temperature: temperature,
+        response_format: { type: "json_object" }
+      }).then(res => safeJsonParse(res.choices[0].message.content, null))
+        .catch(err => null);
+
+    // 1st Pass: Deterministic single verification
+    const firstResult = await makeCall(0.1);
+    
+    // If the first result is confident, trust it to save API calls
+    if (firstResult && firstResult.status && firstResult.confidence !== "low") {
+      return {
+        status: firstResult.status,
+        confidence: firstResult.confidence,
+        reason: firstResult.reason || "",
+        evidence: firstResult.evidence || ""
+      };
+    }
+
+    // 2nd Pass: Fallback Self-Consistency for uncertain claims
+    // We already have 1 result, so we just need 2 more with higher temperature
+    const fallbackPromises = Array.from({ length: 2 }).map(() => makeCall(0.5));
+    const fallbackResults = await Promise.all(fallbackPromises);
+    
+    const allResults = [firstResult, ...fallbackResults];
+    const validResults = allResults.filter(r => r && r.status);
+
+    if (validResults.length === 0) {
+      return {
+        status: "INSUFFICIENT_EVIDENCE",
+        confidence: "low",
+        reason: "Verification failed on all attempts",
+        evidence: "",
+      };
+    }
+
+    // Majority Vote on status
+    const statusCounts = {};
+    validResults.forEach(r => {
+      statusCounts[r.status] = (statusCounts[r.status] || 0) + 1;
+    });
+
+    let majorityStatus = validResults[0].status;
+    let maxCount = 0;
+    for (const [status, count] of Object.entries(statusCounts)) {
+      if (count > maxCount) {
+        maxCount = count;
+        majorityStatus = status;
       }
-    });
+    }
 
-    const text = response.choices[0].message.content;
+    // Find the first result that matched the majority vote to pull its reason/evidence
+    const finalResult = validResults.find(r => r.status === majorityStatus);
 
-    return safeJsonParse(text, {
-      status: "INSUFFICIENT_EVIDENCE",
-      confidence: "low",
-      reason: "Parse error",
-      evidence: "",
-    });
+    return {
+      status: finalResult.status,
+      confidence: finalResult.confidence || "low",
+      reason: finalResult.reason || "",
+      evidence: finalResult.evidence || ""
+    };
   } catch (err) {
     return {
       status: "INSUFFICIENT_EVIDENCE",
