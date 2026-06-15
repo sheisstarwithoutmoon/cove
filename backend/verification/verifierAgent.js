@@ -1,14 +1,6 @@
 import axios from "axios";
-import { GoogleGenAI } from "@google/genai";
-import dotenv from "dotenv";
-import { dirname, resolve } from "path";
-import { fileURLToPath } from "url";
+import { ai } from "../utils/gemini.js";
 import { safeJsonParse } from "../utils/safeJsonParse.js";
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-dotenv.config({ path: resolve(__dirname, "../.env") });
-
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 async function checkUrlAlive(url) {
   try {
@@ -79,7 +71,18 @@ INSUFFICIENT_EVIDENCE`,
   }
 }
 
-export async function verifierAgent(summaries) {
+export async function verifierAgent(summariesOrMessage) {
+  const startTime = Date.now();
+  let summaries;
+  let isEnvelope = false;
+
+  if (summariesOrMessage && summariesOrMessage.payload && typeof summariesOrMessage.payload === "object") {
+    summaries = summariesOrMessage.payload.summaries || [];
+    isEnvelope = true;
+  } else {
+    summaries = summariesOrMessage || [];
+  }
+
   const sourcePromises = summaries
   .filter(source => source && source.url)
   .map(async (source) => {
@@ -140,5 +143,26 @@ export async function verifierAgent(summaries) {
     };
   });
 
-  return await Promise.all(sourcePromises);
+  const results = await Promise.all(sourcePromises);
+
+  if (isEnvelope) {
+    const high = results.filter(v => v.confidence !== "low").length;
+    const overallConfidence = results.length > 0 ? (high / results.length) : 0;
+
+    return {
+      from: "verifier_agent",
+      to: "orchestrator_agent",
+      type: "VERIFICATION_RESULTS",
+      payload: {
+        verifiedSources: results
+      },
+      metadata: {
+        timestamp: new Date().toISOString(),
+        confidence: overallConfidence,
+        latency_ms: Date.now() - startTime
+      }
+    };
+  }
+
+  return results;
 }
