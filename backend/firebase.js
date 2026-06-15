@@ -16,7 +16,7 @@ if (process.env.FIREBASE_SERVICE_ACCOUNT) {
     serviceAccount = require("./serviceAccountKey.json");
   } catch (e) {
     console.error(
-      "❌ Firebase credentials not found! Add FIREBASE_SERVICE_ACCOUNT env variable or serviceAccountKey.json locally."
+      "Firebase credentials not found! Add FIREBASE_SERVICE_ACCOUNT env variable or serviceAccountKey.json locally."
     );
     process.exit(1);
   }
