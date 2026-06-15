@@ -49,7 +49,7 @@ function buildArxivQuery(interests = []) {
 }
 
 app.get("/", (req, res) => {
-  res.json({ status: "Cove API running ✅" });
+  res.json({ status: "Cove API running" });
 });
 
 app.get("/profile", authMiddleware, async (req, res) => {
