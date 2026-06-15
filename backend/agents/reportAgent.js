@@ -13,7 +13,7 @@ export async function reportAgent(
   pdfMetaLegacy = null
 ) {
   const startTime = Date.now();
-  let query, verifiedSources, pdfContext, pdfMeta;
+  let query, verifiedSources, pdfContext, pdfMeta, deepResearch;
   let isEnvelope = false;
 
   if (queryOrMessage && queryOrMessage.payload && typeof queryOrMessage.payload === "object") {
@@ -21,13 +21,18 @@ export async function reportAgent(
     verifiedSources = queryOrMessage.payload.verifiedSources || [];
     pdfContext = queryOrMessage.payload.pdfContext || "";
     pdfMeta = queryOrMessage.payload.pdfMeta || null;
+    deepResearch = queryOrMessage.payload.deepResearch || false;
     isEnvelope = true;
   } else {
     query = queryOrMessage;
     verifiedSources = verifiedSourcesLegacy || [];
     pdfContext = pdfContextLegacy;
     pdfMeta = pdfMetaLegacy;
+    deepResearch = false;
   }
+
+  // Aggressively drop irrelevant sources that returned empty claims from the summarizer
+  verifiedSources = verifiedSources.filter((s) => !(s.confidence === "low" && s.claims && s.claims.length === 0));
 
   const goodSources = verifiedSources.filter((s) => s.confidence !== "low");
   const flaggedSources = verifiedSources.filter((s) => s.confidence === "low");
@@ -46,9 +51,12 @@ export async function reportAgent(
     ? `\n\nAdditional user-provided PDF context (supplementary only, do not cite as external source):\n${pdfContext.slice(0, 2500)}`
     : "";
 
+  const isDeep = Boolean(deepResearch);
+
   const fallbackReport = {
     title: `Research Report: ${query}`,
     executive_summary: "Research completed with verified sources.",
+    comprehensive_analysis: isDeep ? ["Detailed synthesis could not be generated."] : undefined,
     key_findings: goodSources.flatMap((s, i) =>
       s.claims
         .filter((c) => c.supported)
@@ -64,13 +72,33 @@ export async function reportAgent(
     conclusion: "See sources for full details."
   };
 
-  try {
-    const response = await groq.chat.completions.create({
-      model: "llama-3.3-70b-versatile",
-      messages: [
-        {
-          role: "system",
-          content: `You are a research report writer. Write a structured report based on verified web sources. Use additional PDF context only as user background context and never as external citation.
+  const systemPrompt = isDeep 
+    ? `You are an expert research analyst writing a highly detailed, comprehensive report based on deep vector-retrieved web sources.
+Use additional PDF context only as user background context and never as external citation.
+Your goal is to synthesize the massive amount of provided semantic evidence into a cohesive, deeply analytical report.
+
+Return ONLY JSON with this structure:
+{
+  "title": "Report title",
+  "executive_summary": "A concise 2-3 sentence overview.",
+  "comprehensive_analysis": [
+    "Paragraph 1: Deep dive into the first major theme, heavily grounded in the evidence...",
+    "Paragraph 2: Detailed synthesis of conflicting or supporting data...",
+    "Paragraph 3: Further nuanced breakdown...",
+    "Paragraph 4: ..."
+  ],
+  "key_findings": [
+    { 
+      "finding": "Specific factual finding", 
+      "evidence": "verbatim evidence snippet quote",
+      "source_index": 1, 
+      "source_title": "title", 
+      "source_url": "url" 
+    }
+  ],
+  "conclusion": "Final wrap-up paragraph"
+}`
+    : `You are a research report writer. Write a structured report based on verified web sources. Use additional PDF context only as user background context and never as external citation.
 Return ONLY JSON with this structure:
 {
   "title": "Report title",
@@ -85,7 +113,15 @@ Return ONLY JSON with this structure:
     }
   ],
   "conclusion": "1-2 sentence conclusion"
-}`
+}`;
+
+  try {
+    const response = await groq.chat.completions.create({
+      model: "llama-3.3-70b-versatile",
+      messages: [
+        {
+          role: "system",
+          content: systemPrompt
         },
         {
           role: "user",
@@ -93,7 +129,7 @@ Return ONLY JSON with this structure:
         }
       ],
       temperature: 0.3,
-      max_tokens: 2000,
+      max_tokens: isDeep ? 4000 : 2000,
       response_format: {
         type: "json_object"
       }

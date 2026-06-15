@@ -4,10 +4,11 @@ import {
   text,
   timestamp,
   integer,
-  real
+  real,
+  index
 } from "drizzle-orm/pg-core";
 
-import { relations } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 //
 // REPORTS
 //
@@ -121,4 +122,39 @@ export const metricsRelations = relations(metrics, ({ one }) => ({
     fields: [metrics.reportId],
     references: [reports.id],
   }),
+}));
+
+import { customType } from "drizzle-orm/pg-core";
+
+const vector = customType({
+  dataType() {
+    return 'vector(384)';
+  },
+  toDriver(value) {
+    return JSON.stringify(value);
+  },
+  fromDriver(value) {
+    if (typeof value === 'string') {
+      return JSON.parse(value);
+    }
+    return value;
+  },
+});
+
+//
+// DOCUMENT CHUNKS (For RAG)
+//
+export const documentChunks = pgTable("document_chunks", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  
+  url: text("url").notNull(),
+    
+  chunkIndex: integer("chunk_index"),
+  
+  text: text("text").notNull(),
+  
+  embedding: vector("embedding"),
+}, (table) => ({
+  embeddingIndex: index("embedding_idx")
+    .using("hnsw", table.embedding.op("vector_cosine_ops"))
 }));

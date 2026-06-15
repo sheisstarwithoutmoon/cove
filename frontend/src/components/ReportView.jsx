@@ -1,61 +1,54 @@
-import { useEffect, useState } from "react";
-import { useTheme } from "./ThemeContext";
 import { IconArrowLeft, IconCheck, IconAlertTriangle, IconExternalLink } from "./Icons";
 
 export default function ReportView({ report, onBack }) {
-  const { theme } = useTheme();
-  const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 900);
-
-  useEffect(() => {
-    function handleResize() {
-      setIsMobile(window.innerWidth <= 900);
-    }
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, []);
-
-  const s = getStyles(theme, isMobile);
-
-  const confidenceColor = (c) => ({ high: theme.success, medium: theme.warning, low: theme.danger }[c] || theme.textTertiary);
-  const confidenceBg = (c) => ({ high: theme.successBg, medium: theme.warningBg, low: theme.dangerBg }[c] || "transparent");
+  const confidenceColor = (c) => ({ high: "var(--success)", medium: "var(--warning)", low: "var(--danger)" }[c] || "var(--text-tertiary)");
+  const confidenceBg = (c) => ({ high: "var(--success-bg)", medium: "var(--warning-bg)", low: "var(--danger-bg)" }[c] || "transparent");
 
   return (
-    <div style={s.wrap}>
+    <div className="rv-wrap">
       {/* Top bar */}
-      <div style={s.topbar}>
-        <button style={s.back} onClick={onBack}>
-          <IconArrowLeft size={15} color={theme.textPrimary} />
+      <div className="rv-topbar">
+        <button className="rv-back" onClick={onBack}>
+          <IconArrowLeft size={15} color="var(--text-primary)" />
           <span>New Research</span>
         </button>
-        <div style={s.statRow}>
-          <span style={s.statBadge}>
-            <IconCheck size={13} color={theme.success} />
+        <div className="rv-stat-row">
+          <span className="rv-stat-badge">
+            <IconCheck size={13} color="var(--success)" />
             {report.verifiedCount} verified
           </span>
           {report.flaggedCount > 0 && (
-            <span style={{ ...s.statBadge, color: theme.danger, background: theme.dangerBg, borderColor: theme.dangerBorder }}>
-              <IconAlertTriangle size={13} color={theme.danger} />
+            <span className="rv-stat-badge rv-stat-danger">
+              <IconAlertTriangle size={13} color="var(--danger)" />
               {report.flaggedCount} flagged
             </span>
           )}
         </div>
       </div>
 
-      <h1 style={s.title}>{report.title}</h1>
+      <h1 className="rv-title">{report.title}</h1>
 
-      <Section label="Executive Summary" theme={theme}>
-        <p style={s.body}>{report.executive_summary}</p>
+      <Section label="Executive Summary">
+        <p className="rv-body">{report.executive_summary}</p>
       </Section>
 
-      <Section label="Key Findings" theme={theme}>
+      {report.comprehensive_analysis && report.comprehensive_analysis.length > 0 && (
+        <Section label="Detailed Analysis">
+          {report.comprehensive_analysis.map((paragraph, idx) => (
+            <p key={idx} className="rv-body" style={{ marginBottom: 14 }}>{paragraph}</p>
+          ))}
+        </Section>
+      )}
+
+      <Section label="Key Findings">
         {report.key_findings?.map((f, i) => (
-          <div key={i} style={s.finding}>
-            <div style={s.num}>{i + 1}</div>
+          <div key={i} className="rv-finding">
+            <div className="rv-num">{i + 1}</div>
             <div style={{ flex: 1 }}>
-              <p style={s.findingText}>{f.finding}</p>
+              <p className="rv-finding-text">{f.finding}</p>
               {f.source_url && (
-                <a href={f.source_url} target="_blank" rel="noopener noreferrer" style={s.link}>
-                  <IconExternalLink size={12} color={theme.info} />
+                <a href={f.source_url} target="_blank" rel="noopener noreferrer" className="rv-link">
+                  <IconExternalLink size={12} color="var(--info)" />
                   <span>{f.source_title || f.source_url}</span>
                 </a>
               )}
@@ -65,28 +58,24 @@ export default function ReportView({ report, onBack }) {
       </Section>
 
       {report.conclusion && (
-        <Section label="Conclusion" theme={theme}>
-          <p style={s.body}>{report.conclusion}</p>
+        <Section label="Conclusion">
+          <p className="rv-body">{report.conclusion}</p>
         </Section>
       )}
 
-      <Section label="Sources & Citation Verification" theme={theme}>
+      <Section label="Sources & Citation Verification">
         {report.sources?.map((src, i) => (
-          <div key={i} style={s.srcRow}>
-            <div style={{
-              ...s.statusDot,
-              background: src.urlAlive ? theme.success : theme.danger,
-              boxShadow: src.urlAlive
-                ? `0 0 8px ${theme.successBg}`
-                : `0 0 8px ${theme.dangerBg}`,
-            }} />
+          <div key={i} className="rv-src-row">
+            <div 
+              className={`rv-status-dot ${src.urlAlive ? "rv-status-alive" : "rv-status-dead"}`} 
+            />
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={s.srcTitle}>{src.title}</div>
-              <a href={src.url} target="_blank" rel="noopener noreferrer" style={s.srcUrl}>
+              <div className="rv-src-title">{src.title}</div>
+              <a href={src.url} target="_blank" rel="noopener noreferrer" className="rv-src-url">
                 {src.url.length > 65 ? src.url.slice(0, 65) + "..." : src.url}
               </a>
             </div>
-            <div style={{ ...s.badge, color: confidenceColor(src.confidence), background: confidenceBg(src.confidence) }}>
+            <div className="rv-badge" style={{ color: confidenceColor(src.confidence), background: confidenceBg(src.confidence) }}>
               {src.confidence}
             </div>
           </div>
@@ -96,148 +85,11 @@ export default function ReportView({ report, onBack }) {
   );
 }
 
-function Section({ label, children, theme }) {
+function Section({ label, children }) {
   return (
     <div style={{ marginBottom: 36 }}>
-      <div style={{
-        color: theme.textTertiary,
-        fontSize: 11,
-        textTransform: "uppercase",
-        letterSpacing: 2,
-        fontWeight: 600,
-        marginBottom: 14,
-      }}>{label}</div>
+      <div className="rv-section-label">{label}</div>
       {children}
     </div>
   );
-}
-
-function getStyles(t, isMobile) {
-  return {
-    wrap: { maxWidth: 780, margin: "0 auto", paddingBottom: 60 },
-    topbar: {
-      display: "flex",
-      justifyContent: "space-between",
-      alignItems: isMobile ? "flex-start" : "center",
-      marginBottom: 28,
-      flexDirection: isMobile ? "column" : "row",
-      gap: isMobile ? 10 : 0,
-    },
-    back: {
-      background: t.bgElevated,
-      border: `1px solid ${t.border}`,
-      color: t.textPrimary,
-      padding: "8px 16px",
-      borderRadius: 8,
-      cursor: "pointer",
-      fontSize: 13,
-      fontWeight: 500,
-      display: "flex",
-      alignItems: "center",
-      gap: 8,
-      transition: "all 0.2s ease",
-    },
-    statRow: { display: "flex", gap: 10, flexWrap: "wrap" },
-    statBadge: {
-      display: "flex",
-      alignItems: "center",
-      gap: 6,
-      fontSize: 12,
-      fontWeight: 600,
-      color: t.success,
-      background: t.successBg,
-      border: `1px solid ${t.successBorder}`,
-      borderRadius: 8,
-      padding: "5px 12px",
-    },
-    title: {
-      color: t.textPrimary,
-      fontSize: isMobile ? 21 : 26,
-      fontWeight: 700,
-      marginBottom: isMobile ? 22 : 32,
-      lineHeight: 1.35,
-      letterSpacing: "-0.3px",
-    },
-    body: {
-      color: t.textSecondary,
-      fontSize: isMobile ? 14 : 14.5,
-      lineHeight: 1.75,
-      margin: 0,
-    },
-    finding: {
-      display: "flex",
-      gap: isMobile ? 10 : 14,
-      background: t.bgCard,
-      border: `1px solid ${t.border}`,
-      borderRadius: 12,
-      padding: isMobile ? 12 : 16,
-      marginBottom: 12,
-    },
-    num: {
-      width: 26,
-      height: 26,
-      background: t.accentBg,
-      color: t.accentText,
-      borderRadius: "50%",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      fontSize: 11,
-      fontWeight: 700,
-      flexShrink: 0,
-    },
-    findingText: {
-      color: t.textSecondary,
-      fontSize: isMobile ? 13 : 13.5,
-      lineHeight: 1.65,
-      margin: "0 0 8px",
-    },
-    link: {
-      color: t.info,
-      fontSize: 12,
-      textDecoration: "none",
-      display: "inline-flex",
-      alignItems: "center",
-      gap: 5,
-    },
-    srcRow: {
-      display: "flex",
-      alignItems: isMobile ? "flex-start" : "center",
-      gap: 14,
-      padding: "14px 0",
-      borderBottom: `1px solid ${t.borderSubtle}`,
-      flexWrap: isMobile ? "wrap" : "nowrap",
-    },
-    statusDot: {
-      width: 8,
-      height: 8,
-      borderRadius: "50%",
-      flexShrink: 0,
-    },
-    srcTitle: {
-      color: t.textSecondary,
-      fontSize: isMobile ? 12.5 : 13,
-      marginBottom: 3,
-      fontWeight: 500,
-    },
-    srcUrl: {
-      color: t.textMuted,
-      fontSize: 12,
-      textDecoration: "none",
-      display: "block",
-      overflow: "hidden",
-      textOverflow: "ellipsis",
-      whiteSpace: "nowrap",
-    },
-    badge: {
-      fontSize: 10,
-      fontWeight: 700,
-      padding: "4px 10px",
-      borderRadius: 20,
-      textTransform: "uppercase",
-      flexShrink: 0,
-      letterSpacing: "0.5px",
-      marginLeft: isMobile ? 22 : 0,
-    },
-  };
 }
