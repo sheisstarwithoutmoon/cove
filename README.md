@@ -72,7 +72,7 @@ Add this to your Claude Desktop configuration file (typically `C:\Users\<usernam
   "mcpServers": {
     "cove": {
       "command": "node",
-      "args": ["C:\\...\\cove\\backend\\mcp-server.js/cove/backend/mcp-server.js"]
+      "args": ["C:\\...\\cove\\backend\\mcp-server.js"]
     }
   }
 }
