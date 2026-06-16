@@ -49,7 +49,7 @@ function buildArxivQuery(interests = []) {
 }
 
 app.get("/", (req, res) => {
-  res.json({ status: "Cove API running" });
+  res.json({ status: "Cove Backend" });
 });
 
 app.get("/profile", authMiddleware, async (req, res) => {
@@ -174,4 +174,4 @@ app.get("/reports", authMiddleware, async (req, res) => {
 });
 
 const PORT = process.env.PORT || 8000;
-app.listen(PORT, () => console.log(`Cove API running on http://localhost:${PORT}`));
+app.listen(PORT, () => console.log(`Cove Backend on http://localhost:${PORT}`));

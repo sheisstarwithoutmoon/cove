@@ -1,10 +1,8 @@
-import Groq from "groq-sdk";
+import { groq } from "../utils/groq.js";
 import dotenv from "dotenv";
 import { safeJsonParse } from "../utils/safeJsonParse.js";
 
 dotenv.config();
-
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 export async function summarizerAgent(
   queryOrMessage,
@@ -66,15 +64,17 @@ export async function summarizerAgent(
           messages: [
             {
               role: "system",
-              content: `You are a research summarizer.
+              content: `You are a strict research summarizer.
 
 First, check if the source is clearly relevant to the query. If it is completely unrelated or irrelevant, return an empty array for that source's claims.
-Otherwise, extract 2-3 factual claims relevant to the query.
+Otherwise, extract 1-3 factual claims relevant to the query.
+
+CRITICAL: You must extract claims ONLY if they are explicitly stated in the provided Source Content snippet. Do NOT use your pre-trained knowledge about the paper or its title to extract details (such as architectural details, mathematical formulas, or specific results) that are not written in the snippet text. Every claim you extract must be directly verifiable using only the snippet.
 
 Return ONLY JSON:
 {
-"url1":["claim1","claim2"],
-"url2":[]
+  "url1":["claim1","claim2"],
+  "url2":[]
 }`
             },
             {

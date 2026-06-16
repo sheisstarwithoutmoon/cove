@@ -96,3 +96,15 @@ export const IconSun = ({ size, color }) => (
 export const IconMoon = ({ size, color }) => (
   <svg {...d(size, color)}><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
 );
+
+export const IconScales = ({ size, color }) => (
+  <svg {...d(size, color)}><line x1="12" y1="2" x2="12" y2="22"/><line x1="5" y1="7" x2="19" y2="7"/><path d="M5 7L2 17h6zM19 7l-3 10h6z"/></svg>
+);
+
+export const IconBarChart = ({ size, color }) => (
+  <svg {...d(size, color)}><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+);
+
+export const IconDot = ({ size = 8, color = "currentColor" }) => (
+  <svg width={size} height={size} viewBox="0 0 8 8" xmlns="http://www.w3.org/2000/svg" style={{ display: "inline-block", verticalAlign: "middle" }}><circle cx="4" cy="4" r="4" fill={color} /></svg>
+);

@@ -1,4 +1,5 @@
-import ai from "../utils/gemini.js";
+import { groq } from "../utils/groq.js";
+import { safeJsonParse } from "../utils/safeJsonParse.js";
 
 export async function classifyQuerySafety(query) {
   try {
@@ -14,19 +15,19 @@ Return ONLY JSON in this format:
   "reason": "Explain why it is unsafe, or empty string if safe"
 }`;
 
-    // We use gemini-2.5-flash for incredibly fast and cheap safety filtering
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: prompt,
-      config: {
-        temperature: 0.1,
-        responseMimeType: "application/json"
-      }
+    const response = await groq.chat.completions.create({
+      model: "llama-3.1-8b-instant",
+      messages: [
+        { role: "system", content: "You are a strict safety classifier. Output JSON." },
+        { role: "user", content: prompt }
+      ],
+      temperature: 0.1,
+      response_format: { type: "json_object" }
     });
 
-    const result = JSON.parse(response.text);
+    const result = safeJsonParse(response.choices[0].message.content, { safe: true, reason: "" });
     return {
-      safe: result.safe,
+      safe: result.safe !== false,
       reason: result.reason || "Violates content policy"
     };
   } catch (error) {

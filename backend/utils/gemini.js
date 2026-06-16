@@ -80,8 +80,11 @@ export const ai = {
   models: {
     generateContent: async (params) => {
       let attempts = 0;
+      let sleepRetries = 0;
+      const maxSleepRetries = 2;
       const maxAttempts = keys.length > 0 ? keys.length : 1;
-      while (attempts < maxAttempts) {
+      
+      while (true) {
         try {
           const timeoutPromise = new Promise((_, reject) => 
             setTimeout(() => reject(new Error('Request timeout after 30s')), 30000)
@@ -100,42 +103,96 @@ export const ai = {
               continue;
             }
           }
-          if (isRotatableError(error) && keys.length > 1) {
-            console.warn(`[Gemini API] Key error on key ${currentKeyIndex + 1} (${error.status || error.message?.substring(0, 50)}). Attempting rotation...`);
-            rotateKey();
+          
+          if (isRotatableError(error)) {
             attempts++;
-            if (attempts >= maxAttempts) {
-              console.error("[Gemini API] All available keys exhausted.");
-              throw error;
+            if (keys.length > 1 && attempts < maxAttempts) {
+              console.warn(`[Gemini API] Key error on key ${currentKeyIndex + 1} (${error.status || error.message?.substring(0, 50)}). Attempting rotation...`);
+              rotateKey();
+              continue;
             }
-          } else {
-            throw error;
+            
+            // All keys have been tried in this round and failed with 429/rotatable error
+            if (sleepRetries < maxSleepRetries) {
+              sleepRetries++;
+              attempts = 0; // reset key attempts for the next round
+              
+              // Extract retry delay from error message
+              const message = String(error?.message || "");
+              const match = message.match(/Please retry in ([\d\.]+)s/i);
+              let delayMs = 5000; // default 5s fallback
+              if (match) {
+                delayMs = (parseFloat(match[1]) * 1000) + 1000; // add 1s buffer
+              } else {
+                const retryInfoMatch = message.match(/retryDelay["']?\s*:\s*["']?(\d+)s/i);
+                if (retryInfoMatch) {
+                  delayMs = (parseInt(retryInfoMatch[1]) * 1000) + 1000;
+                }
+              }
+              
+              console.warn(`[Gemini API] All keys exhausted (429/Rate Limit). Sleeping for ${Math.round(delayMs)}ms before retry attempt ${sleepRetries}/${maxSleepRetries}...`);
+              await new Promise(resolve => setTimeout(resolve, delayMs));
+              
+              // Rotate anyway to distribute load for the next attempt
+              if (keys.length > 1) {
+                rotateKey();
+              }
+              continue;
+            }
           }
+          
+          // If not rotatable, or we exhausted all retry strategies
+          throw error;
         }
       }
-      throw new Error("Failed to generate content after exhausting keys");
     },
     embedContent: async (params) => {
       let attempts = 0;
+      let sleepRetries = 0;
+      const maxSleepRetries = 2;
       const maxAttempts = keys.length > 0 ? keys.length : 1;
-      while (attempts < maxAttempts) {
+      
+      while (true) {
         try {
           return await aiInstance.models.embedContent(params);
         } catch (error) {
-          if (isRotatableError(error) && keys.length > 1) {
-            console.warn(`[Gemini API] Key error on key ${currentKeyIndex + 1} (embedContent) (${error.status || error.message?.substring(0, 50)}). Attempting rotation...`);
-            rotateKey();
+          if (isRotatableError(error)) {
             attempts++;
-            if (attempts >= maxAttempts) {
-              console.error("[Gemini API] All available keys exhausted for embedding.");
-              throw error;
+            if (keys.length > 1 && attempts < maxAttempts) {
+              console.warn(`[Gemini API] Key error on key ${currentKeyIndex + 1} (embedContent) (${error.status || error.message?.substring(0, 50)}). Attempting rotation...`);
+              rotateKey();
+              continue;
             }
-          } else {
-            throw error;
+            
+            if (sleepRetries < maxSleepRetries) {
+              sleepRetries++;
+              attempts = 0;
+              
+              const message = String(error?.message || "");
+              const match = message.match(/Please retry in ([\d\.]+)s/i);
+              let delayMs = 5000;
+              if (match) {
+                delayMs = (parseFloat(match[1]) * 1000) + 1000;
+              } else {
+                const retryInfoMatch = message.match(/retryDelay["']?\s*:\s*["']?(\d+)s/i);
+                if (retryInfoMatch) {
+                  delayMs = (parseInt(retryInfoMatch[1]) * 1000) + 1000;
+                }
+              }
+              
+              console.warn(`[Gemini API] All keys exhausted for embedding (429). Sleeping for ${Math.round(delayMs)}ms before retry attempt ${sleepRetries}/${maxSleepRetries}...`);
+              await new Promise(resolve => setTimeout(resolve, delayMs));
+              
+              if (keys.length > 1) {
+                rotateKey();
+              }
+              continue;
+            }
           }
+          
+          throw error;
         }
       }
-      throw new Error("Failed to embed content after exhausting keys");
     }
   }
 };

@@ -4,21 +4,25 @@ import { sql } from 'drizzle-orm';
 import { fetchAndExtractText, chunkText } from './scraper.js';
 
 let pipeline = null;
-let embedder = null;
+let embedderPromise = null;
 
 async function getEmbedder() {
-  if (embedder === null) {
-    try {
-      const transformers = await import("@xenova/transformers");
-      pipeline = transformers.pipeline;
-      embedder = await pipeline("feature-extraction", "Xenova/bge-small-en-v1.5");
-      console.log("[VectorStore] Loaded Xenova/bge-small-en-v1.5 model successfully.");
-    } catch (err) {
-      console.error("[VectorStore] Failed to load embedding model:", err.message);
-      throw err;
-    }
+  if (!embedderPromise) {
+    embedderPromise = (async () => {
+      try {
+        const transformers = await import("@xenova/transformers");
+        pipeline = transformers.pipeline;
+        const instance = await pipeline("feature-extraction", "Xenova/bge-small-en-v1.5");
+        console.log("[VectorStore] Loaded Xenova/bge-small-en-v1.5 model successfully.");
+        return instance;
+      } catch (err) {
+        console.error("[VectorStore] Failed to load embedding model:", err.message);
+        embedderPromise = null; // Reset so next calls can retry
+        throw err;
+      }
+    })();
   }
-  return embedder;
+  return embedderPromise;
 }
 
 export async function storeDocumentInVectorDb(url) {

@@ -1,124 +1,162 @@
-# Cove - Setup Guide
+# Cove
 
-## Prerequisites
-Make sure you have these installed:
-- [Node.js 18+](https://nodejs.org)
-- [Git](https://git-scm.com)
+Cove is a multi-agent AI research assistant that performs query-focused literature reviews, web searches, and citation verification. It retrieves academic papers (arXiv, OpenAlex) and web pages (Tavily), extracts factual claims, and verifies them directly against source passages to prevent hallucinations.
 
----
-## Step 1 — Clone the Repo
-
-```bash
-git clone https://github.com/sheisstarwithoutmoon/cove.git
-cd cove
-```
----
-
-## Step 2 — Get Your API Keys
-You need 3 free accounts:
-### Groq (LLM)
-1. Go to [console.groq.com](https://console.groq.com)
-2. Sign up → API Keys → Create API Key
-3. Copy it → looks like `gsk_xxxxxxxxxx`
-
-### Tavily (Search)
-1. Go to [tavily.com](https://tavily.com)
-2. Sign up → Dashboard → API Keys
-3. Copy it → looks like `tvly-xxxxxxxxxx`
-
-### Firebase (Auth + Database)
-1. Go to [firebase.google.com](https://firebase.google.com) → Add Project → name it `cove`
-2. **Enable Google Auth:**
-   - Left sidebar → Authentication → Get Started
-   - Sign-in providers → Google → Enable → Save
-3. **Enable Firestore:**
-   - Left sidebar → Firestore Database → Create Database
-   - Start in test mode → Choose a region → Done
-4. **Get Frontend Config:**
-   - Project Settings (gear icon) → Your apps → Add app → Web (`</>`)
-   - Register app → copy the `firebaseConfig` object
-5. **Get Service Account Key:**
-   - Project Settings → Service Accounts → Generate new private key
-   - Downloads a JSON file → rename it to `serviceAccountKey.json`
+Cove runs as both a web application and a Model Context Protocol (MCP) server.
 
 ---
 
-## Step 3 — Backend Setup
+## Architecture
 
-```bash
-cd backend
-npm install
+Cove coordinates multiple specialized agents using a ReAct (Reasoning and Action) orchestration loop.
+
+### System Diagram
+
+```mermaid
+graph TD
+    User([User Query / MCP Call]) --> InputGuard[Input Guardrails]
+    InputGuard --> Orchestrator{Orchestrator <br/> ReAct Loop}
+    
+    Orchestrator -->|1. Search| SearchAgent[Unified Search]
+    SearchAgent --> Academic[arXiv / OpenAlex APIs]
+    SearchAgent --> Web[Tavily Search API]
+    Academic & Web --> Dedupe[Deduplicate & Rank]
+    Dedupe --> Relevance[Batch Relevance Check <br/> Llama 3.1 8B]
+    Relevance -->|Top Chunks| VectorDB[(pgvector DB)]
+    
+    Orchestrator -->|2. Summarize| Summarizer[Summarizer Agent <br/> Extract Claims]
+    Summarizer --> Chunks[Read Passages / PDF Chunks]
+    
+    Orchestrator -->|3. Verify| Verifier[Verifier Agent <br/> Llama 3.3 70B]
+    Verifier --> CrossCheck[Cross-Check Claims vs Sources]
+    
+    Orchestrator -->|4. Finish| Reporter[Report Writer]
+    Reporter --> Report[JSON Synthesis]
+    Report --> OutputGuard[Output Guardrails]
+    OutputGuard --> Out([React UI / MCP Markdown])
 ```
 
-Create a `.env` file inside the `backend/` folder:
+### Execution Flow
+1. **Input Guard**: The query is validated for safety via a Groq-hosted safety model.
+2. **ReAct Loop (Orchestrator)**: Evaluates what info is missing, selecting tools dynamically:
+   - **`search_query`**: Searches databases. Runs local `bge-small-en-v1.5` embeddings to rank matches, filters the top 8 candidates using a batched Llama 3.1 relevance audit, and indexes contents into `pgvector` (if deep research is enabled).
+   - **`summarize_sources`**: Scrapes pages/PDFs and extracts factual claims.
+   - **`verify_claims`**: Evaluates all claims in a single batch call per paper using Llama 3.3 70B to assign confidence states (Supported, Contradicted, etc.).
+3. **Report Generation**: Synthesizes verified claims into a markdown report containing:
+   - **Contradiction Detection**: Conflicting viewpoints across papers.
+   - **Research Gaps**: Missing information in the literature.
+   - **Evidence Graph**: A citation matrix mapping claims to source URLs.
 
-```env
-GROQ_API_KEY=your_groq_key_here
-TAVILY_API_KEY=your_tavily_key_here
-PORT=8000
-```
-
-Place `serviceAccountKey.json` inside the `backend/` folder:
-
-Start the backend:
-
-```bash
-npm run dev
-```
 ---
 
-## Step 4 — Frontend Setup
+## MCP Server Integration
 
-Open a **new terminal**:
+Cove exposes its research pipeline as an MCP server. You can integrate it with Claude Desktop or any MCP-compatible client.
 
-```bash
-cd frontend
-npm install
+### MCP Tools
+
+| Tool Name | Description | Key Arguments |
+| :--- | :--- | :--- |
+| `run_research` | Runs the full research pipeline and outputs a cited Markdown survey. | `query` (string), `deepResearch` (bool) |
+| `unified_search` | Searches academic + web databases, deduplicates, and semantically ranks. | `query` (string) |
+| `scrape_url` | Downloads any web page or PDF and extracts clean readable text. | `url` (string) |
+| `store_document` | Scrapes, chunks, embeds, and indexes a URL into the local vector DB. | `url` (string) |
+| `query_knowledge_base` | Queries the local pgvector store for matching text chunks. | `query` (string), `k` (int) |
+
+### Claude Desktop Configuration
+
+Add this to your Claude Desktop configuration file (typically `C:\Users\<username>\AppData\Roaming\Claude\claude_desktop_config.json` on Windows or `~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
+
+```json
+{
+  "mcpServers": {
+    "cove": {
+      "command": "node",
+      "args": ["C:/Users/iamva/LearningMCP/cove/backend/mcp-server.js"]
+    }
+  }
+}
 ```
 
-Create a `.env` file inside the `frontend/` folder:
+> [!NOTE]  
+> Cove automatically loads environment variables (including API keys and DB URLs) from the local `backend/.env` file relative to the script path. You do not need to expose your keys in the Claude configuration file.
 
-```env
-REACT_APP_API_URL=http://localhost:8000
-```
 
-Start the frontend:
+---
 
-```bash
-npm run dev
-```
+## Local Development Setup
 
-## Folder Structure
+### Prerequisites
+- Node.js 18+
+- PostgreSQL with `pgvector` extension (optional, required for deep research RAG)
+
+### Setup Steps
+
+1. **Get API Keys**:
+   - **Groq**: API key from [console.groq.com](https://console.groq.com)
+   - **Tavily**: Search API key from [tavily.com](https://tavily.com)
+   - **Firebase**: Set up a Firestore project. Download your admin credentials to `backend/serviceAccountKey.json` and configure Google authentication.
+
+2. **Backend Setup**:
+   ```bash
+   cd backend
+   npm install
+   ```
+   Create a `backend/.env` file:
+   ```env
+   GROQ_API_KEY=your_groq_api_key
+   GROQ_API_KEY1=optional_backup_key_1
+   GROQ_API_KEY2=optional_backup_key_2
+   TAVILY_API_KEY=your_tavily_key
+   DATABASE_URL=your_postgres_db_url
+   PORT=8000
+   ```
+   Start the backend server:
+   ```bash
+   npm run dev
+   ```
+
+3. **Frontend Setup**:
+   ```bash
+   cd ../frontend
+   npm install
+   ```
+   Create a `frontend/.env` file:
+   ```env
+   REACT_APP_API_URL=http://localhost:8000
+   # Paste your Firebase Client configuration:
+   REACT_APP_FIREBASE_API_KEY=...
+   REACT_APP_FIREBASE_AUTH_DOMAIN=...
+   REACT_APP_FIREBASE_PROJECT_ID=...
+   REACT_APP_FIREBASE_STORAGE_BUCKET=...
+   REACT_APP_FIREBASE_MESSAGING_SENDER_ID=...
+   REACT_APP_FIREBASE_APP_ID=...
+   ```
+   Start the frontend React app:
+   ```bash
+   npm run dev
+   ```
+
+---
+
+## Codebase Map
 
 ```
 cove/
 ├── backend/
-│   ├── agents/
-│   │   ├── orchestrator.js
-│   │   ├── searchAgent.js
-│   │   ├── summarizerAgent.js
-│   │   ├── verifierAgent.js
-│   │   └── reportAgent.js
-│   ├── middleware/
-│   │   └── auth.js
-│   ├── firebase.js
-│   ├── index.js
-│   ├── package.json
-│   ├── .env                   ← you create this
-│   └── serviceAccountKey.json ← you download this
-│
+│   ├── agents/            # Orchestrator ReAct loop & report generator
+│   ├── db/                # Neon/Drizzle schema definitions & loaders
+│   ├── guardrails/        # Content safety policy checks
+│   ├── ranking/           # Local ONNX semantic ranking algorithms
+│   ├── retrieval/         # Academic/web crawlers & vector store integrations
+│   ├── utils/             # Rotated Groq/Gemini API clients
+│   ├── verification/      # Citation claim checking engines
+│   ├── mcp-server.js      # Stdio MCP entrypoint
+│   └── index.js           # HTTP/SSE Express server entrypoint
 └── frontend/
-    ├── public/
-    │   └── index.html
-    ├── src/
-    │   ├── components/
-    │   │   ├── Login.jsx
-    │   │   ├── Dashboard.jsx
-    │   │   ├── AgentProgress.jsx
-    │   │   └── ReportView.jsx
-    │   ├── App.jsx
-    │   ├── index.js
-    │   └── firebase.js
-    ├── package.json
-    └── .env                   ← you create this
+    ├── public/            
+    └── src/
+        ├── components/    # SVG-native UI components (no emojis)
+        ├── hooks/         
+        └── theme.js       # Design tokens & styles
 ```
