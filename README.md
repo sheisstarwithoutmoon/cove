@@ -1,6 +1,6 @@
 # Cove
 
-Cove is a multi-agent AI research assistant that performs query-focused literature reviews, web searches, and citation verification. It retrieves academic papers (arXiv, OpenAlex) and web pages (Tavily), extracts factual claims, and verifies them directly against source passages to prevent hallucinations.
+Cove is a multi-agent AI research assistant that performs query-focused literature reviews, web searches, and citation verification. It retrieves academic papers (arXiv, OpenAlex) and web pages (Tavily), extracts factual claims, and verifies them directly against source passages to prevent hallucinations. 
 
 Cove runs as both a web application and a Model Context Protocol (MCP) server.
 
@@ -72,7 +72,7 @@ Add this to your Claude Desktop configuration file (typically `C:\Users\<usernam
   "mcpServers": {
     "cove": {
       "command": "node",
-      "args": ["C:/Users/iamva/LearningMCP/cove/backend/mcp-server.js"]
+      "args": ["C:\\...\\cove\\backend\\mcp-server.js/cove/backend/mcp-server.js"]
     }
   }
 }
