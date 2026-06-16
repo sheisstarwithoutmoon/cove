@@ -1,21 +1,37 @@
 import { getAuthorityScore } from "./authorityScores.js";
 let pipeline = null;
-let embedder = null;
+let embedderPromise = null;
 
 // Dynamically load the pipeline to avoid failures if not installed or running in a restricted node environment
 async function getEmbedder() {
-  if (embedder === undefined) {
-    try {
-      const transformers = await import("@xenova/transformers");
-      pipeline = transformers.pipeline;
-      embedder = await pipeline("feature-extraction", "Xenova/bge-small-en-v1.5");
-      console.log("[SemanticRanking] Loaded Xenova/bge-small-en-v1.5 model successfully.");
-    } catch (err) {
-      console.warn("[SemanticRanking] Could not load @xenova/transformers or bge-small-en model. Using fallback word-frequency vector similarity.", err.message);
-      embedder = null;
-    }
+  if (!embedderPromise) {
+    embedderPromise = (async () => {
+      try {
+        const transformers = await import("@xenova/transformers");
+        pipeline = transformers.pipeline;
+        const instance = await pipeline("feature-extraction", "Xenova/bge-small-en-v1.5");
+        console.log("[SemanticRanking] Loaded Xenova/bge-small-en-v1.5 model successfully.");
+        return instance;
+      } catch (err) {
+        console.warn("[SemanticRanking] Could not load @xenova/transformers or bge-small-en model. Using fallback word-frequency vector similarity.", err.message);
+        embedderPromise = null;
+        return null;
+      }
+    })();
   }
-  return embedder;
+  return embedderPromise;
+}
+
+export async function getLocalEmbedding(text) {
+  const extractor = await getEmbedder();
+  if (!extractor) return null;
+  try {
+    const output = await extractor(text, { pooling: "mean", normalize: true });
+    return Array.from(output.data);
+  } catch (err) {
+    console.error("[LocalEmbedding] Failed to generate embedding:", err.message);
+    return null;
+  }
 }
 
 export function cosineSimilarity(vecA, vecB) {

@@ -12,7 +12,8 @@ export async function saveReport(uid, query, report) {
       .values({
         uid,
         query,
-        title: report.title
+        title: report.title,
+        reportJson: JSON.stringify(report)
       })
       .returning();
       

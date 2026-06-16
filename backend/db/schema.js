@@ -22,6 +22,8 @@ export const reports = pgTable("reports", {
   title: text("title"),
 
   createdAt: timestamp("created_at", {mode: "date"}).defaultNow(),
+
+  reportJson: text("report_json"),
 });
 
 //

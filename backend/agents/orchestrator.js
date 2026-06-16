@@ -1,7 +1,30 @@
-import { ai } from "../utils/gemini.js";
+import { ai, EMBEDDING_MODEL } from "../utils/gemini.js";
+import { getLocalEmbedding, cosineSimilarity } from "../ranking/semanticRanking.js";
+
+async function getEmbedding(text) {
+  const localVal = await getLocalEmbedding(text);
+  if (localVal) return localVal;
+  
+  try {
+    const response = await ai.models.embedContent({
+      model: EMBEDDING_MODEL,
+      contents: text
+    });
+    if (response.embedding && response.embedding.values) {
+      return response.embedding.values;
+    }
+    if (response.embeddings && response.embeddings[0] && response.embeddings[0].values) {
+      return response.embeddings[0].values;
+    }
+  } catch (err) {
+    console.error("[Gemini Embedding Fallback Error]:", err.message);
+  }
+  throw new Error("Unable to extract embedding values from local or Gemini");
+}
+import { groq } from "../utils/groq.js";
 import { unifiedSearch } from "../retrieval/unifiedSearch.js";
 import { summarizerAgent } from "./summarizerAgent.js";
-import { verifierAgent } from "../verification/verifierAgent.js";
+import { verifierAgent, checkSourceRelevance, checkBatchRelevance } from "../verification/verifierAgent.js";
 import { reportAgent } from "./reportAgent.js";
 import { safeJsonParse } from "../utils/safeJsonParse.js";
 import { storeDocumentInVectorDb, retrieveTopChunks } from "../retrieval/vectorStore.js";
@@ -100,15 +123,67 @@ export async function runResearchPipeline(query, onUpdate, options = {}) {
 
       const results = responseEnvelope.payload?.results || [];
       
+      const uniqueNewResults = results.filter(res => res.url && !memory.sources.some(s => s.url === res.url));
+      
+      if (uniqueNewResults.length === 0) {
+        onUpdate({ type: "agent_done", agent: "search", message: `Search finished. Found ${results.length} results. Added 0 new sources.` });
+        return `Search completed. Found ${results.length} total results. Added 0 new unique sources.`;
+      }
+
+      onUpdate({ type: "agent_start", agent: "verifier", message: `Pre-filtering ${uniqueNewResults.length} new sources using embeddings...` });
+
+      // 1. Get embedding for the user's main research query
+      const queryEmbedding = await getEmbedding(query);
+
+      // 2. Get embeddings for each unique search result
+      const sourceEmbeddingsPromises = uniqueNewResults.map(async (res) => {
+        try {
+          const textToEmbed = `Title: ${res.title}\nContent: ${res.snippet}`;
+          const embedding = await getEmbedding(textToEmbed);
+          return { res, embedding };
+        } catch (err) {
+          console.error(`[Embedding Error] Failed to embed source: "${res.title}". Error: ${err.message}`);
+          return { res, embedding: null };
+        }
+      });
+
+      const sourceEmbeddings = await Promise.all(sourceEmbeddingsPromises);
+
+      // 3. Compute cosine similarity and sort results
+      const resultsWithSimilarity = sourceEmbeddings
+        .map(({ res, embedding }) => {
+          if (!embedding) return { res, similarity: -1 };
+          const similarity = cosineSimilarity(queryEmbedding, embedding);
+          return { res, similarity };
+        })
+        .sort((a, b) => b.similarity - a.similarity);
+
+      // 4. Take top 8 papers for strict LLM auditing
+      const top8 = resultsWithSimilarity.slice(0, 8);
+      const discardedByEmbeddingCount = resultsWithSimilarity.length - top8.length;
+      const papersToAudit = top8.map(item => item.res);
+
+      onUpdate({ type: "agent_start", agent: "verifier", message: `Auditing relevance of top ${papersToAudit.length} sources (discarded ${discardedByEmbeddingCount} by embedding)...` });
+
+      // 5. Run LLM relevance check in a single batch call
+      const audits = await checkBatchRelevance(query, papersToAudit);
+      
       let newCount = 0;
+      let discardedByLlmCount = 0;
       const newUrls = [];
-      results.forEach(res => {
-        if (res.url && !memory.sources.some(s => s.url === res.url)) {
+
+      for (const { res, audit } of audits) {
+        if (audit.relevant) {
           memory.sources.push(res);
           newUrls.push(res.url);
           newCount++;
+        } else {
+          discardedByLlmCount++;
+          console.log(`[Relevance Audit] Discarded irrelevant source: "${res.title}" (${res.url}). Reason: ${audit.reason}`);
         }
-      });
+      }
+
+      const discardedCount = discardedByEmbeddingCount + discardedByLlmCount;
       
       if (deepResearch && newUrls.length > 0) {
         onUpdate({
@@ -119,8 +194,12 @@ export async function runResearchPipeline(query, onUpdate, options = {}) {
         await Promise.allSettled(newUrls.map(url => storeDocumentInVectorDb(url)));
       }
 
-      onUpdate({ type: "agent_done", agent: "search", message: `Search finished. Found ${results.length} results. Added ${newCount} new sources.` });
-      return `Search completed. Found ${results.length} total results. Added ${newCount} new unique sources. Total unique sources now: ${memory.sources.length}.`;
+      onUpdate({ 
+        type: "agent_done", 
+        agent: "search", 
+        message: `Search finished. Found ${results.length} results. Added ${newCount} relevant sources (${discardedCount} discarded).` 
+      });
+      return `Search completed. Found ${results.length} total results. Added ${newCount} new relevant sources. Discarded ${discardedCount} off-topic/irrelevant sources. Total unique relevant sources now: ${memory.sources.length}.`;
     },
     
     summarize_sources: async () => {
@@ -176,6 +255,7 @@ export async function runResearchPipeline(query, onUpdate, options = {}) {
         to: "verifier_agent",
         type: "VERIFICATION_REQUEST",
         payload: {
+          query,
           summaries: unverified
         },
         metadata: { timestamp: new Date().toISOString() }
@@ -253,18 +333,17 @@ Current Statistics:
 Decide your next action:`;
 
     try {
-      const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: prompt,
-        config: {
-          systemInstruction,
-          temperature: 0.1,
-          responseMimeType: "application/json",
-          responseSchema: reactDecisionSchema
-        }
+      const response = await groq.chat.completions.create({
+        model: "llama-3.3-70b-versatile",
+        messages: [
+          { role: "system", content: systemInstruction + "\nOutput JSON matching this schema: " + JSON.stringify(reactDecisionSchema) },
+          { role: "user", content: prompt }
+        ],
+        temperature: 0.1,
+        response_format: { type: "json_object" }
       });
       
-      const decision = safeJsonParse(response.text, null);
+      const decision = safeJsonParse(response.choices[0].message.content, null);
       if (!decision || !decision.action) {
         throw new Error("Failed to parse agent decision or action is missing.");
       }
