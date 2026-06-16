@@ -77,10 +77,8 @@ Add this to your Claude Desktop configuration file (typically `C:\Users\<usernam
   }
 }
 ```
-
-> [!NOTE]  
-> Cove automatically loads environment variables (including API keys and DB URLs) from the local `backend/.env` file relative to the script path. You do not need to expose your keys in the Claude configuration file.
-
+ 
+Cove automatically loads environment variables (including API keys and DB URLs) from the local `backend/.env` file relative to the script path. You do not need to expose your keys in the Claude configuration file.
 
 ---
 
@@ -94,6 +92,7 @@ Add this to your Claude Desktop configuration file (typically `C:\Users\<usernam
 
 1. **Get API Keys**:
    - **Groq**: API key from [console.groq.com](https://console.groq.com)
+   - **Gemini**: API key from [aistudio.google.com/app/api-keys](https://aistudio.google.com/app/api-keys)
    - **Tavily**: Search API key from [tavily.com](https://tavily.com)
    - **Firebase**: Set up a Firestore project. Download your admin credentials to `backend/serviceAccountKey.json` and configure Google authentication.
 
@@ -104,9 +103,11 @@ Add this to your Claude Desktop configuration file (typically `C:\Users\<usernam
    ```
    Create a `backend/.env` file:
    ```env
-   GROQ_API_KEY=your_groq_api_key
-   GROQ_API_KEY1=optional_backup_key_1
-   GROQ_API_KEY2=optional_backup_key_2
+   GROQ_API_KEY1=your_groq_api_key
+   GROQ_API_KEY2=optional_backup_key_1
+   GEMINI_API_KEY1=your_gemini_api_key
+   GEMINI_API_KEY2=optional_backup_key_1
+   GEMINI_API_KEY3=optional_backup_key_2
    TAVILY_API_KEY=your_tavily_key
    DATABASE_URL=your_postgres_db_url
    PORT=8000
