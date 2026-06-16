@@ -157,7 +157,7 @@ cove/
 └── frontend/
     ├── public/            
     └── src/
-        ├── components/    # SVG-native UI components (no emojis)
+        ├── components/    
         ├── hooks/         
         └── theme.js       # Design tokens & styles
 ```
